@@ -1,0 +1,6 @@
+{
+  "name": "Autopia Manager",
+  "description": "Software gestionale desktop per autodemolitori collegato al marketplace Autopia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

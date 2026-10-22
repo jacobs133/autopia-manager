@@ -1,0 +1,16 @@
+[package]
+name = "autopia-manager"
+version = "0.1.0"
+description = "Software gestionale desktop per autodemolitori collegato ad Autopia"
+authors = ["Autopia Team"]
+license = "Proprietary"
+repository = "https://github.com/autopia-shop/autopia-manager"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.1", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
