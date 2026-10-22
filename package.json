@@ -35,5 +35,8 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
+  },
+  "optionalDependencies": {
+    "@tauri-apps/cli-win32-x64-msvc": "^2.12.4"
   }
 }
