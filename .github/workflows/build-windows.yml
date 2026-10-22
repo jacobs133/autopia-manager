@@ -33,10 +33,11 @@ jobs:
       - name: 3. Installazione della toolchain Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 4. Installazione delle dipendenze frontend e binding nativo Windows
+      - name: 4. Installazione delle dipendenze frontend e binding nativi Windows
         run: |
+          npm install -g npm@latest
           npm ci
-          npm install @tauri-apps/cli-win32-x64-msvc --no-save
+          npm install @tauri-apps/cli-win32-x64-msvc @rolldown/binding-win32-x64-msvc --no-save
 
       - name: 5. Compilazione del frontend e dell'applicazione Tauri
         uses: tauri-apps/tauri-action@v0

@@ -37,6 +37,7 @@
     "typescript": "^7.0.2"
   },
   "optionalDependencies": {
-    "@tauri-apps/cli-win32-x64-msvc": "^2.12.4"
+    "@tauri-apps/cli-win32-x64-msvc": "^2.12.4",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.15"
   }
 }
