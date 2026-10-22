@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+src-tauri/target/
+bun.lock
+bun.lockb
