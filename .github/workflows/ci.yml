@@ -1,0 +1,30 @@
+name: "Verifica CI (Lint e Build Frontend)"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    name: "Verifica TypeScript e Build"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout codice
+        uses: actions/checkout@v4
+
+      - name: 2. Configura Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 3. Installa dipendenze
+        run: npm install
+
+      - name: 4. Controllo tipi TypeScript
+        run: npm run lint
+
+      - name: 5. Compilazione frontend Vite
+        run: npm run build

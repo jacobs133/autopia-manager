@@ -1,16 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Laptop, Clock, AlertCircle } from 'lucide-react';
+import {
+  Database,
+  Laptop,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+  ShieldAlert,
+  Sparkles,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
 import { isTauriEnvironment } from '../../utils/tauriWindow';
+import { useUpdate } from '../../contexts/UpdateContext';
 
 interface StatusBarProps {
   backendConnected?: boolean;
   statusMessage?: string;
+  sellerBusinessName?: string | null;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   backendConnected = false,
-  statusMessage = 'Backend Autopia non collegato (In attesa di credenziali autodemolitore)',
+  statusMessage = 'Backend Autopia non collegato',
+  sellerBusinessName,
 }) => {
+  const { currentVersion, updateAvailable, updateInfo, progress, startInstall, relaunch } = useUpdate();
   const [time, setTime] = useState<string>('');
   const [isTauri, setIsTauri] = useState(false);
 
@@ -46,7 +60,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           ) : (
             <span className="flex items-center space-x-1 text-amber-400/90 font-medium">
               <AlertCircle className="w-3 h-3 text-amber-400" />
-              <span>Non configurato (Nessuna simulazione attiva)</span>
+              <span>Disconnesso / Da configurare</span>
             </span>
           )}
         </div>
@@ -54,10 +68,58 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <div className="h-3 w-px bg-slate-800" />
 
         <span className="text-slate-500 truncate max-w-md">{statusMessage}</span>
+
+        {sellerBusinessName && (
+          <>
+            <div className="h-3 w-px bg-slate-800" />
+            <span className="text-amber-400/90 font-medium truncate max-w-xs">
+              Azienda: {sellerBusinessName}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Destra: Runtime, Versione e Orologio */}
       <div className="flex items-center space-x-3">
+        {/* Indicatore Aggiornamento Disponibile o in Corso */}
+        {updateAvailable && (
+          <>
+            <button
+              type="button"
+              onClick={startInstall}
+              className="flex items-center space-x-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 font-medium transition-colors cursor-pointer text-[10px]"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>Nuova v{updateInfo?.version} disponibile</span>
+            </button>
+            <div className="h-3 w-px bg-slate-800" />
+          </>
+        )}
+
+        {progress.status === 'DOWNLOADING' && (
+          <>
+            <span className="flex items-center space-x-1 text-amber-300 font-mono text-[10px]">
+              <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+              <span>Aggiornamento: {progress.percentage}%</span>
+            </span>
+            <div className="h-3 w-px bg-slate-800" />
+          </>
+        )}
+
+        {progress.status === 'READY_TO_RELAUNCH' && (
+          <>
+            <button
+              type="button"
+              onClick={relaunch}
+              className="flex items-center space-x-1 text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800/80 font-bold transition-colors cursor-pointer text-[10px] animate-pulse"
+            >
+              <RotateCcw className="w-3 h-3 text-emerald-400" />
+              <span>Riavvia per completare</span>
+            </button>
+            <div className="h-3 w-px bg-slate-800" />
+          </>
+        )}
+
         <div className="flex items-center space-x-1 text-slate-400">
           <Laptop className="w-3 h-3 text-slate-500" />
           <span>{isTauri ? 'Tauri 2.x • Windows' : 'Web Dev Preview'}</span>
@@ -65,7 +127,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
         <div className="h-3 w-px bg-slate-800" />
 
-        <span className="text-slate-500 font-mono text-[10px]">v0.1.0-alpha</span>
+        <span className="text-slate-500 font-mono text-[10px]">v{currentVersion}</span>
 
         <div className="h-3 w-px bg-slate-800" />
 

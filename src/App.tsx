@@ -1,285 +1,373 @@
 import React, { useState } from 'react';
 import {
+  AuthProvider,
+  useAuth,
+} from './contexts/AuthContext';
+import { UpdateProvider } from './contexts/UpdateContext';
+import {
   DesktopShell,
   DesktopSection,
 } from './components/desktop/DesktopShell';
+import { LoginForm } from './components/auth/LoginForm';
+import { BackendSettings } from './components/settings/BackendSettings';
+import { VehiclesManager } from './components/vehicles/VehiclesManager';
+import { PartsManager } from './components/parts/PartsManager';
+import { ListingsManager } from './components/listings/ListingsManager';
+import { CsvImportManager } from './components/import/CsvImportManager';
+import { AdminManager } from './components/admin/AdminManager';
 import {
   Wrench,
   CheckCircle2,
-  FolderGit2,
-  FileCode2,
-  Cpu,
-  Terminal,
-  Database,
-  Info,
+  Building2,
+  MapPin,
+  FileText,
+  Mail,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  Loader2,
+  LogOut,
   Car,
   Package,
   Store,
   FileSpreadsheet,
   Settings,
-  AlertTriangle,
+  HelpCircle,
 } from 'lucide-react';
 
-export default function App() {
+function AppContent() {
+  const {
+    status,
+    user,
+    sellerProfile,
+    effectiveSellerProfile,
+    isAdmin,
+    errorMessage,
+    logout,
+  } = useAuth();
   const [activeSection, setActiveSection] = useState<DesktopSection>('dashboard');
-  const [backendConfigured, setBackendConfigured] = useState<boolean>(false);
 
+  const activeSeller = effectiveSellerProfile || sellerProfile;
+
+  // 1. Schermata iniziale di caricamento
+  if (status === 'INITIALIZING') {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 font-sans select-none">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 animate-pulse">
+            <Wrench className="w-6 h-6" />
+          </div>
+          <div className="text-center space-y-1">
+            <h1 className="text-lg font-bold tracking-wider text-slate-100 uppercase">
+              AUTOPIA <span className="text-amber-400">MANAGER</span>
+            </h1>
+            <p className="text-xs text-slate-500 flex items-center space-x-2 justify-center">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              <span>Verifica sessione e configurazione in corso...</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Schermata impostazioni (accessibile solo ed esclusivamente se l'account è master admin)
+  const isSettingsActive = activeSection === 'settings' && isAdmin;
+
+  // 3. Se non autenticato o configurazione mancante: mostra il form di login
+  if ((status === 'UNAUTHENTICATED' || status === 'UNCONFIGURED') && !isSettingsActive) {
+    return (
+      <DesktopShell
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+      >
+        <LoginForm onOpenSettings={() => {
+          if (isAdmin) setActiveSection('settings');
+        }} />
+      </DesktopShell>
+    );
+  }
+
+  // 4. Se autenticato ma l'account non è abilitato / in attesa / sospeso
+  const isPendingOrRestricted =
+    status === 'AUTHENTICATED_PENDING' ||
+    status === 'AUTHENTICATED_SUSPENDED' ||
+    status === 'AUTHENTICATED_REJECTED' ||
+    status === 'AUTHENTICATED_NO_SELLER';
+
+  if (isPendingOrRestricted && !isSettingsActive) {
+    return (
+      <DesktopShell
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+      >
+        <div className="flex-1 flex items-center justify-center p-6 bg-slate-950 font-sans">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-xl p-7 space-y-5">
+            <div className="flex items-center space-x-3 text-amber-400">
+              <AlertTriangle className="w-7 h-7 shrink-0 text-amber-400" />
+              <div>
+                <h2 className="text-base font-bold text-slate-100">
+                  {status === 'AUTHENTICATED_PENDING' && 'Account in Attesa di Approvazione'}
+                  {status === 'AUTHENTICATED_SUSPENDED' && 'Account Autodemolitore Sospeso'}
+                  {status === 'AUTHENTICATED_REJECTED' && 'Richiesta Venditore Rifiutata'}
+                  {status === 'AUTHENTICATED_NO_SELLER' && 'Nessun Profilo Venditore Trovato'}
+                </h2>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  Accesso identificato: <span className="text-slate-200 font-mono">{user?.email}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 text-xs text-slate-300 leading-relaxed">
+              {errorMessage}
+            </div>
+
+            {sellerProfile && (
+              <div className="bg-slate-950/60 p-3 rounded border border-slate-800/80 text-xs space-y-1 text-slate-400">
+                <div>Azienda: <strong className="text-slate-200">{sellerProfile.business_name}</strong></div>
+                <div>Stato corrente: <span className="text-amber-400 uppercase font-mono">{sellerProfile.status}</span></div>
+                <div>Città: <span className="text-slate-200">{sellerProfile.city}</span></div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('settings')}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Parametri Connessione</span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <button
+                type="button"
+                onClick={logout}
+                className="px-4 py-2 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 rounded text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Disconnetti Account</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </DesktopShell>
+    );
+  }
+
+  // 5. Utente autenticato e approvato (o schermata impostazioni esplicita)
   return (
     <DesktopShell
       activeSection={activeSection}
       onSelectSection={setActiveSection}
-      backendConnected={backendConfigured}
-      statusMessage={
-        backendConfigured
-          ? 'Connessione verificata a Supabase'
-          : 'Fase 1 completata: Struttura Desktop Tauri 2 e ambiente di compilazione verificati'
-      }
     >
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        {/* Banner Intestazione Fase 1 */}
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                FASE 1 COMPLETATA
-              </span>
+      {/* Vista Impostazioni & Sicurezza Master (Riservata esclusivamente ad lollogamer2009@gmail.com) */}
+      {activeSection === 'settings' && isAdmin && <BackendSettings />}
+
+      {/* Vista Cruscotto (Dashboard) */}
+      {activeSection === 'dashboard' && activeSeller && (
+        <div className="p-6 max-w-6xl mx-auto space-y-6 font-sans">
+          {/* Banner di Benvenuto Autodemolitore Approvato o Master Admin */}
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex items-start justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center space-x-2">
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 flex items-center space-x-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span>{isAdmin ? 'MASTER ADMIN PIATTAFORMA' : 'AUTODEMOLITORE APPROVATO'}</span>
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  seller_id: {activeSeller.id.slice(0, 8)}...
+                </span>
+                {isAdmin && (
+                  <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800/60 px-1.5 py-0.2 rounded font-mono font-bold">
+                    Supervisione Rete Attiva
+                  </span>
+                )}
+              </div>
               <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-                <span>Autopia Manager — Struttura Desktop Windows</span>
+                <Building2 className="w-5 h-5 text-amber-400" />
+                <span>{activeSeller.business_name}</span>
               </h1>
+              <p className="text-xs text-slate-400 flex items-center space-x-3">
+                <span className="flex items-center space-x-1">
+                  <MapPin className="w-3 h-3 text-slate-500" />
+                  <span>{activeSeller.city} ({activeSeller.province || 'IT'})</span>
+                </span>
+                {activeSeller.vat_number && (
+                  <span className="flex items-center space-x-1">
+                    <FileText className="w-3 h-3 text-slate-500" />
+                    <span>P.IVA: {activeSeller.vat_number}</span>
+                  </span>
+                )}
+                <span className="flex items-center space-x-1">
+                  <Mail className="w-3 h-3 text-slate-500" />
+                  <span>{user?.email}</span>
+                </span>
+              </p>
             </div>
-            <p className="text-sm text-slate-400">
-              Architettura software per autodemolitori basata su <strong className="text-slate-200">Tauri 2</strong> e <strong className="text-slate-200">React 19 / Vite</strong>. Repository e codice completamente separati dal marketplace online.
-            </p>
+
+            <div className="text-right space-y-1 text-xs">
+              <div className="text-slate-400">Collegamento Backend:</div>
+              <div className="font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded inline-block">
+                Supabase Auth RLS Attivo
+              </div>
+            </div>
           </div>
 
-          <div className="text-right text-xs text-slate-400 space-y-1">
-            <div className="text-slate-300 font-medium">Target compilazione:</div>
-            <div className="font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-1 rounded">
-              Windows x64 (.exe / .msi)
+          {/* Griglia Moduli Gestionale Fase 2 Completi e Funzionanti */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div
+              onClick={() => setActiveSection('vehicles')}
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Parco Veicoli
+                </span>
+                <Car className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Veicoli in Demolizione</div>
+              <p className="text-xs text-slate-400">
+                Registro ingressi, targhe, telaio VIN e catalogo centrale 11.346 modelli (`seller_vehicles`).
+              </p>
+              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
+                <span>Gestisci Parco Veicoli →</span>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setActiveSection('parts')}
+              className="bg-slate-900 border border-slate-800 hover:border-blue-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Magazzino
+                </span>
+                <Package className="w-5 h-5 text-blue-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Ricambi & Scaffalature</div>
+              <p className="text-xs text-slate-400">
+                Codici OEM, giacenze, prezzi, corsie/scaffali e scarico rapido vendita (`inventories`).
+              </p>
+              <div className="pt-2 text-xs text-blue-400 font-medium flex items-center space-x-1">
+                <span>Accedi al Magazzino →</span>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setActiveSection('listings')}
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Marketplace
+                </span>
+                <Store className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Annunci Autopia Shop</div>
+              <p className="text-xs text-slate-400">
+                Controllo inserzioni online, visibilità e sincronizzazione immediata con autopiashop.it.
+              </p>
+              <div className="pt-2 text-xs text-emerald-400 font-medium flex items-center space-x-1">
+                <span>Gestisci Annunci Online →</span>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setActiveSection('import')}
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Importazione
+                </span>
+                <FileSpreadsheet className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Caricamento CSV Ricambi</div>
+              <p className="text-xs text-slate-400">
+                Importazione massiva di giacenze con modello CSV Autopia e rilevamento automatico categorie.
+              </p>
+              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
+                <span>Importa File CSV →</span>
+              </div>
+            </div>
+
+            {/* Scheda Supervisione Amministratore (Visibile solo per lollogamer2009@gmail.com) */}
+            {isAdmin && (
+              <div
+                onClick={() => setActiveSection('admin')}
+                className="bg-slate-900 border border-purple-500/40 hover:border-purple-400 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">
+                    SuperAdmin
+                  </span>
+                  <ShieldAlert className="w-5 h-5 text-purple-400" />
+                </div>
+                <div className="text-lg font-bold text-slate-100">Amministrazione Autopia</div>
+                <p className="text-xs text-slate-400">
+                  Accrediti venditori, statistiche di rete e gestione centralizzata autodemolitori.
+                </p>
+                <div className="pt-2 text-xs text-purple-400 font-medium flex items-center space-x-1">
+                  <span>Apri Console Master →</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Dettagli Tecnico-Operativi Fase 2 Completata */}
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Autopia Manager Fase 2 Operativa</span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
+              <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1">
+                <div className="font-semibold text-amber-400">Magazzino & Scarico Vendite Banco</div>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Le vendite al banco scalano in tempo reale le quantità disponibili in <code className="text-slate-300">inventories</code>, aggiornando lo stato degli annunci per prevenire doppie vendite online su autopiashop.it.
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1">
+                <div className="font-semibold text-purple-400">Sicurezza Ruoli & Privilegi Master</div>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Tutte le funzionalità di gestione e supervisione globale della piattaforma sono rigorosamente blindate e disponibili esclusivamente per <code className="text-purple-300 font-mono">lollogamer2009@gmail.com</code>.
+                </p>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Sezione Dashboard / Stato Architettura */}
-        {activeSection === 'dashboard' && (
-          <div className="space-y-6">
-            {/* Checklist Validazione Architettura */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Core Desktop
-                  </span>
-                  <Cpu className="w-4 h-4 text-amber-400" />
-                </div>
-                <div className="text-lg font-bold text-slate-100">Tauri 2.x</div>
-                <p className="text-xs text-slate-400">
-                  Motore nativo WebView2 di Windows, footprint di memoria ridotto e controlli finestra personalizzati.
-                </p>
-                <div className="flex items-center space-x-1.5 text-xs text-emerald-400 pt-1 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Configurazione src-tauri pronta</span>
-                </div>
-              </div>
+      {/* Modulo Veicoli Demoliti Reale */}
+      {activeSection === 'vehicles' && <VehiclesManager />}
 
-              <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Generazione Installer
-                  </span>
-                  <FolderGit2 className="w-4 h-4 text-blue-400" />
-                </div>
-                <div className="text-lg font-bold text-slate-100">GitHub Actions</div>
-                <p className="text-xs text-slate-400">
-                  Workflow CI/CD su runner Windows nativo (`windows-latest`) per creare automaticamente il setup (.msi e .exe).
-                </p>
-                <div className="flex items-center space-x-1.5 text-xs text-emerald-400 pt-1 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Workflow .github configurato</span>
-                </div>
-              </div>
+      {/* Modulo Magazzino & Ricambi Reale (Fase 2) */}
+      {activeSection === 'parts' && <PartsManager />}
 
-              <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Sicurezza & Database
-                  </span>
-                  <Database className="w-4 h-4 text-emerald-400" />
-                </div>
-                <div className="text-lg font-bold text-slate-100">Zero Credenziali Segrete</div>
-                <p className="text-xs text-slate-400">
-                  Nessuna chiave service_role salvata. Nessun DB fittizio o migrazione remota eseguita alla cieca.
-                </p>
-                <div className="flex items-center space-x-1.5 text-xs text-amber-400 pt-1 font-medium">
-                  <Info className="w-3.5 h-3.5" />
-                  <span>In attesa di schema Supabase reale</span>
-                </div>
-              </div>
-            </div>
+      {/* Modulo Annunci Marketplace Autopia Shop (Fase 2) */}
+      {activeSection === 'listings' && <ListingsManager />}
 
-            {/* Dettagli File e Componenti Generati */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-              <h2 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
-                <FileCode2 className="w-4 h-4 text-amber-400" />
-                <span>Struttura del Progetto Desktop Creata</span>
-              </h2>
+      {/* Modulo Importazione CSV (Fase 2) */}
+      {activeSection === 'import' && <CsvImportManager />}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1.5 text-slate-300">
-                  <div className="font-semibold text-amber-400 mb-2">Cartella src-tauri/ (Core Rust & Config)</div>
-                  <div>├── Cargo.toml <span className="text-slate-500">// Dipendenze Rust (tauri v2.1, serde)</span></div>
-                  <div>├── tauri.conf.json <span className="text-slate-500">// Finestra 1320x840, bundle nsis/msi</span></div>
-                  <div>├── build.rs <span className="text-slate-500">// Script di build Tauri</span></div>
-                  <div>├── src/main.rs <span className="text-slate-500">// Entrypoint Windows subsystem</span></div>
-                  <div>└── capabilities/default.json <span className="text-slate-500">// Permessi controlli finestra</span></div>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1.5 text-slate-300">
-                  <div className="font-semibold text-amber-400 mb-2">Automazione Build & Frontend</div>
-                  <div>├── .github/workflows/build-windows.yml <span className="text-slate-500">// CI/CD Windows runner</span></div>
-                  <div>├── src/utils/tauriWindow.ts <span className="text-slate-500">// Bridge finestra nativa</span></div>
-                  <div>├── src/components/desktop/TitleBar.tsx <span className="text-slate-500">// Titlebar nativa drag</span></div>
-                  <div>├── src/components/desktop/StatusBar.tsx <span className="text-slate-500">// Stato connessione reale</span></div>
-                  <div>└── src/components/desktop/DesktopShell.tsx <span className="text-slate-500">// Shell layout gestionale</span></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Come generare l'eseguibile Windows */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                <span>Come ottenere il file di installazione (.msi / .exe)</span>
-              </h2>
-
-              <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                <p>
-                  Come confermato, Google AI Studio lavora in ambiente Linux cloud e valida l'intera logica TypeScript, React e la configurazione Tauri. Per produrre il binario Windows:
-                </p>
-                <ol className="list-decimal list-inside space-y-1 text-slate-400 pl-2">
-                  <li>
-                    <strong className="text-slate-200">Tramite GitHub (Automatico):</strong> Creando un repository dedicato per questo gestionale e caricando il codice, il file <code className="bg-slate-950 px-1 py-0.5 rounded text-amber-300">.github/workflows/build-windows.yml</code> avvierà una macchina virtuale Windows su GitHub e ti renderà scaricabile direttamente il file di setup.
-                  </li>
-                  <li>
-                    <strong className="text-slate-200">Sul tuo computer locale:</strong> Eseguendo semplicemente <code className="bg-slate-950 px-1 py-0.5 rounded text-amber-300">npm run tauri build</code> su qualsiasi PC Windows con Rust installato.
-                  </li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Anteprima Sezione Veicoli (Fase 2) */}
-        {activeSection === 'vehicles' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <Car className="w-6 h-6" />
-              <h2 className="text-lg font-bold text-slate-100">Modulo Parco Veicoli Demoliti</h2>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Questo modulo permetterà la registrazione dei veicoli in ingresso, targa, telaio (VIN), marca, modello, anno, codice motore e stato bonifica/demolizione.
-            </p>
-            <div className="bg-amber-950/20 border border-amber-800/40 rounded p-4 text-xs text-amber-300 flex items-start space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <strong>In attesa di verifica schema (Fase 2):</strong> Prima di creare campi rigidi, verificheremo se nel backend Supabase di Autopia esiste già una tabella dedicata ai veicoli o se i ricambi sono associati a marche/modelli in formato standard.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Anteprima Sezione Magazzino e Ricambi (Fase 2) */}
-        {activeSection === 'parts' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <Package className="w-6 h-6" />
-              <h2 className="text-lg font-bold text-slate-100">Magazzino & Gestione Ricambi</h2>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Gestione completa dei pezzi di ricambio smontati, categorizzazione, codici OEM originali, stato di usura (grado A/B/C), prezzo consigliato e <strong className="text-slate-200">posizione fisica nel magazzino</strong> (settore, corsia, scaffale, ripiano).
-            </p>
-            <div className="bg-slate-950 border border-slate-800 rounded p-4 text-xs text-slate-400">
-              Il sistema integrerà la ricerca istantanea locale e i filtri di giacenza per l'autodemolitore.
-            </div>
-          </div>
-        )}
-
-        {/* Anteprima Sezione Annunci (Fase 2 / 3) */}
-        {activeSection === 'listings' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <Store className="w-6 h-6" />
-              <h2 className="text-lg font-bold text-slate-100">Annunci Marketplace Autopia (autopiashop.it)</h2>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Controllo dello stato di pubblicazione dei ricambi sul marketplace pubblico.
-            </p>
-            <div className="bg-blue-950/20 border border-blue-800/40 rounded p-4 text-xs text-blue-300">
-              <strong>Regola di integrità:</strong> Nessun annuncio verrà mostrato come pubblicato senza l'esplicita conferma di risposta dal server Supabase di Autopia.
-            </div>
-          </div>
-        )}
-
-        {/* Anteprima Sezione Importazione CSV (Fase 2) */}
-        {activeSection === 'import' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <FileSpreadsheet className="w-6 h-6" />
-              <h2 className="text-lg font-bold text-slate-100">Importazione CSV Ricambi & Giacenze</h2>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Permette di caricare in blocco inventari già esistenti in formato CSV/Excel (ad esempio da altri software gestionali di demolizione o file fornitore), con mappatura automatica delle colonne (Codice, Descrizione, Veicolo, Posizione, Prezzo).
-            </p>
-          </div>
-        )}
-
-        {/* Sezione Connessione Backend & Autenticazione (Fase 3) */}
-        {activeSection === 'settings' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-5">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <Settings className="w-6 h-6" />
-              <h2 className="text-lg font-bold text-slate-100">Configurazione Connessione Supabase</h2>
-            </div>
-
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Qui l'autodemolitore effettuerà il login con le credenziali del proprio account venditore registrato su <strong className="text-slate-200">autopiashop.it</strong>.
-            </p>
-
-            <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3 text-xs">
-              <div className="font-semibold text-slate-300">Parametri di Collegamento Client:</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-400 block mb-1">URL Progetto Supabase</label>
-                  <input
-                    type="text"
-                    disabled
-                    placeholder="https://xyzcompany.supabase.co"
-                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-400 text-xs cursor-not-allowed"
-                  />
-                  <span className="text-[10px] text-slate-500">Verrà impostato nella Fase 3 con i dati reali del progetto.</span>
-                </div>
-                <div>
-                  <label className="text-slate-400 block mb-1">Chiave Pubblica (anon key)</label>
-                  <input
-                    type="text"
-                    disabled
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-400 text-xs cursor-not-allowed"
-                  />
-                  <span className="text-[10px] text-slate-500">Solo chiave pubblica client (nessuna chiave service_role).</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded text-xs text-amber-300 flex items-center space-x-2">
-              <Info className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                Nessuna operazione di scrittura o simulazione fittizia verrà eseguita finché non analizzeremo lo schema del database Supabase nella fase dedicata.
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Modulo Amministrazione Piattaforma (Fase 2 - Riservato lollogamer2009@gmail.com) */}
+      {activeSection === 'admin' && <AdminManager />}
     </DesktopShell>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <UpdateProvider>
+        <AppContent />
+      </UpdateProvider>
+    </AuthProvider>
   );
 }

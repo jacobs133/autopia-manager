@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",
@@ -46,6 +47,14 @@
         "installMode": "perMachine",
         "languages": ["Italian"]
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "CONFIGURE_WITH_TAURI_SIGNER_PUBKEY",
+      "endpoints": [
+        "https://github.com/autopia-shop/autopia-manager/releases/latest/download/latest.json"
+      ]
     }
   }
 }

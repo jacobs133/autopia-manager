@@ -2,8 +2,6 @@ name: "Compilazione Installer Windows (Autopia Manager)"
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -38,19 +36,21 @@ jobs:
           npm install -g npm@latest
           npm install
 
-      - name: 5. Compilazione del frontend e dell'applicazione Tauri
+      - name: 5. Compilazione del frontend e dell'applicazione Tauri con firma crittografica
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: autopia-manager-v__VERSION__
+          tagName: v__VERSION__
           releaseName: "Autopia Manager v__VERSION__"
-          releaseBody: "Release automatica per Windows (Autopia Manager - Gestionale Autodemolizioni)"
+          releaseBody: "Release ufficiale per Windows (Autopia Manager - Gestionale Autodemolizioni)"
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: 6. Caricamento degli installer generati (MSI ed EXE)
+      - name: 6. Caricamento degli installer generati (MSI, EXE, pacchetti di aggiornamento e firme)
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,4 +60,7 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/**/*.exe
             src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.zip
+            src-tauri/target/release/bundle/**/*.sig
+            src-tauri/target/release/bundle/**/latest.json
           if-no-files-found: warn
