@@ -52,7 +52,7 @@ jobs:
 
       - name: 6. Caricamento degli installer generati (MSI, EXE, pacchetti di aggiornamento e firme)
         uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: autopia-manager-windows-setup
           path: |
@@ -63,4 +63,4 @@ jobs:
             src-tauri/target/release/bundle/**/*.zip
             src-tauri/target/release/bundle/**/*.sig
             src-tauri/target/release/bundle/**/latest.json
-          if-no-files-found: warn
+          if-no-files-found: error

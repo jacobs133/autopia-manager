@@ -53,7 +53,7 @@
     "updater": {
       "pubkey": "CONFIGURE_WITH_TAURI_SIGNER_PUBKEY",
       "endpoints": [
-        "https://github.com/autopia-shop/autopia-manager/releases/latest/download/latest.json"
+        "https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json"
       ]
     }
   }

@@ -17,6 +17,6 @@
     "updater:allow-download-and-install",
     "process:default",
     "process:allow-restart",
-    "app:default"
+    "core:app:allow-version"
   ]
 }

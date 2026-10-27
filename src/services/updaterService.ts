@@ -119,7 +119,7 @@ export async function checkForAppUpdate(options?: {
   // 2. Controllo informativo in ambiente Web / Anteprima
   // Interroga il manifest pubblico per visualizzare lo stato senza scaricare binari Windows
   try {
-    const manifestUrl = 'https://raw.githubusercontent.com/autopia-shop/autopia-manager/main/src-tauri/tauri.conf.json';
+    const manifestUrl = 'https://raw.githubusercontent.com/jacobs133/autopia-manager/main/src-tauri/tauri.conf.json';
     const response = await fetch(manifestUrl, { cache: 'no-store' });
     if (response.ok) {
       const remoteConfig = await response.json();
