@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",
@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEREOEUwQTIxOTgxNTVFRTIKUldUaVhoV1lJUXFPM1FPRTNZWVVIUENNc1pmT3dOanVudjdZUzQ0MFA2L3NyeGVOTnNKWWRGY2YK",
+      "pubkey": "RWTiXhWYIQqO3QOE3YYUHPCMsZfOwNjunj7YS440P6/srxeNNsJYdFcf",
       "endpoints": [
         "https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json"
       ]
