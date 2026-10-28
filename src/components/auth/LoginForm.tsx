@@ -12,9 +12,10 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { BackendConfigModal } from './BackendConfigModal';
 
 interface LoginFormProps {
-  onOpenSettings: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onOpenSettings }) => {
@@ -23,6 +24,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenSettings }) => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +53,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenSettings }) => {
   };
 
   const isConfigMissing = status === 'UNCONFIGURED';
+
+  const handleOpenConfig = () => {
+    setIsConfigModalOpen(true);
+    if (onOpenSettings) {
+      onOpenSettings();
+    }
+  };
 
   return (
     <div className="flex-1 flex items-center justify-center p-6 bg-slate-950 font-sans">
@@ -91,8 +100,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenSettings }) => {
             </div>
             <button
               type="button"
-              onClick={onOpenSettings}
-              className="w-full mt-2 flex items-center justify-center space-x-1.5 py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded text-amber-300 text-xs font-medium cursor-pointer transition-colors"
+              onClick={handleOpenConfig}
+              className="w-full mt-2 flex items-center justify-center space-x-1.5 py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs cursor-pointer transition-colors shadow-sm"
             >
               <Settings className="w-3.5 h-3.5" />
               <span>Configura Parametri Connessione</span>
@@ -184,18 +193,43 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenSettings }) => {
             </span>
           </div>
 
-          {config && (
-            <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
-              <span className="truncate max-w-[280px]">
-                Endpoint: <code className="text-slate-300 font-mono">{config.url}</code>
-              </span>
-              <span className="text-emerald-400 font-mono text-[10px] bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">
-                Backend Connesso
-              </span>
-            </div>
-          )}
+          <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+            {config ? (
+              <>
+                <span className="truncate max-w-[220px]">
+                  Endpoint: <code className="text-slate-300 font-mono">{config.url}</code>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsConfigModalOpen(true)}
+                  className="text-amber-400 hover:text-amber-300 hover:underline flex items-center space-x-1 font-medium cursor-pointer"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>Modifica Server</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-amber-400/80">Nessun backend connesso</span>
+                <button
+                  type="button"
+                  onClick={() => setIsConfigModalOpen(true)}
+                  className="text-amber-400 hover:text-amber-300 hover:underline flex items-center space-x-1 font-medium cursor-pointer"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>Configura Supabase</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Modale di configurazione parametri Supabase per Desktop */}
+      <BackendConfigModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+      />
     </div>
   );
 };
