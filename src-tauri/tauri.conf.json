@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "CONFIGURE_WITH_TAURI_SIGNER_PUBKEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEREOEUwQTIxOTgxNTVFRTIKUldUaVhoV1lJUXFPM1FPRTNZWVVIUENNc1pmT3dOanVudjdZUzQ0MFA2L3NyeGVOTnNKWWRGY2YK",
       "endpoints": [
         "https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json"
       ]
