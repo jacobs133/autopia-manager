@@ -14,8 +14,6 @@ export interface AuthenticatedSellerContext {
   seller: SellerProfileRecord;
 }
 
-export const SUPERADMIN_EMAIL = 'lollogamer2009@gmail.com';
-
 export const EBAY_SANDBOX_AUTH_URL = 'https://auth.sandbox.ebay.com/oauth2/authorize';
 export const EBAY_SANDBOX_TOKEN_URL = 'https://api.sandbox.ebay.com/identity/v1/oauth2/token';
 export const EBAY_SANDBOX_IDENTITY_URL = 'https://apiz.sandbox.ebay.com/commerce/identity/v1/user';
@@ -29,6 +27,19 @@ export const EBAY_SANDBOX_SCOPES = [
   'https://api.ebay.com/oauth/api_scope',
   'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
 ].join(' ');
+
+/**
+ * Funzione di escaping HTML per proteggere qualsiasi dato dinamico da attacchi XSS.
+ */
+export function escapeHtml(unsafe: string | null | undefined): string {
+  if (unsafe == null) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 /**
  * Genera gli header CORS compatibili con l'ambiente desktop Tauri e il web.
@@ -62,6 +73,7 @@ export function getCorsHeaders(requestOrigin?: string): Record<string, string> {
 
 /**
  * Verifica e recupera le credenziali server obbligatorie.
+ * Rifiuta chiavi di cifratura non conformi a 256 bit (64 caratteri esadecimali).
  */
 export function getRequiredEnvVars(): {
   supabaseUrl: string;
@@ -89,13 +101,20 @@ export function getRequiredEnvVars(): {
     throw new Error(`Variabili d'ambiente server mancanti su Netlify: ${missing.join(', ')}`);
   }
 
+  const cleanKey = encryptionKeyHex!.trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(cleanKey)) {
+    throw new Error(
+      'EBAY_TOKEN_ENCRYPTION_KEY non valida: deve essere una stringa esadecimale di esattamente 64 caratteri (32 byte / 256 bit).'
+    );
+  }
+
   return {
     supabaseUrl: supabaseUrl.trim(),
     supabaseServiceRoleKey: supabaseServiceRoleKey!.trim(),
     ebayClientId: ebayClientId!.trim(),
     ebayClientSecret: ebayClientSecret!.trim(),
     ebayRuName: ebayRuName!.trim(),
-    encryptionKeyHex: encryptionKeyHex!.trim(),
+    encryptionKeyHex: cleanKey,
   };
 }
 
@@ -118,59 +137,69 @@ export function getSupabaseAdminClient(): SupabaseClient {
 }
 
 /**
- * Cifra un token o segreto utilizzando AES-256-GCM con IV casuale e Authentication Tag.
- * Restituisce una stringa formattata: iv_hex:auth_tag_hex:ciphertext_hex
+ * Cifra un token o segreto utilizzando AES-256-GCM.
+ * Requisiti crittografici rigorosi:
+ * - Chiave: esattamente 32 byte (64 caratteri esadecimali). Rifiuta chiavi non valide senza derivazione automatica.
+ * - IV: 12 byte (96 bit) casuali generati con CSPRNG.
+ * - Auth Tag: 16 byte (128 bit) generati da AES-GCM per garantire autenticità e integrità.
+ * Restituisce: iv_hex:auth_tag_hex:ciphertext_hex
  */
 export function encryptToken(plainText: string, keyHex: string): string {
-  if (!plainText) {
-    throw new Error('Testo in chiaro vuoto da cifrare');
+  if (!plainText || typeof plainText !== 'string') {
+    throw new Error('Testo in chiaro non valido o vuoto da cifrare');
   }
 
-  let keyBuffer: Buffer;
-  if (/^[0-9a-fA-F]{64}$/.test(keyHex)) {
-    keyBuffer = Buffer.from(keyHex, 'hex');
-  } else {
-    keyBuffer = crypto.createHash('sha256').update(keyHex).digest();
+  if (!keyHex || typeof keyHex !== 'string' || !/^[0-9a-fA-F]{64}$/.test(keyHex.trim())) {
+    throw new Error(
+      'Chiave di cifratura non valida: deve essere una stringa esadecimale di esattamente 64 caratteri (32 byte / 256 bit). Derivazione automatica da password disabilitata.'
+    );
   }
 
-  const iv = crypto.randomBytes(12); // Nonce raccomandato a 96 bit per AES-GCM
+  const keyBuffer = Buffer.from(keyHex.trim(), 'hex');
+  const iv = crypto.randomBytes(12); // Nonce raccomandato a 96 bit (12 byte) per AES-GCM
   const cipher = crypto.createCipheriv('aes-256-gcm', keyBuffer, iv);
 
   let encrypted = cipher.update(plainText, 'utf8', 'hex');
   encrypted += cipher.final('hex');
 
-  const authTag = cipher.getAuthTag();
+  const authTag = cipher.getAuthTag(); // 16 byte (128 bit)
 
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
 }
 
 /**
  * Decifra un payload cifrato precedentemente con encryptToken().
- * Solleva un errore se il tag di autenticazione non corrisponde (manomissione o chiave errata).
+ * Solleva un errore crittografico se il tag di autenticazione non corrisponde o se il payload è manomesso.
+ * Non espone mai chiavi o token nei messaggi di errore.
  */
 export function decryptToken(encryptedPayload: string, keyHex: string): string {
-  if (!encryptedPayload || !encryptedPayload.includes(':')) {
-    throw new Error('Formato payload cifrato non valido');
+  if (!encryptedPayload || typeof encryptedPayload !== 'string') {
+    throw new Error('Payload cifrato non valido');
+  }
+
+  if (!keyHex || typeof keyHex !== 'string' || !/^[0-9a-fA-F]{64}$/.test(keyHex.trim())) {
+    throw new Error(
+      'Chiave di cifratura non valida: deve essere una stringa esadecimale di esattamente 64 caratteri (32 byte).'
+    );
   }
 
   const parts = encryptedPayload.split(':');
   if (parts.length !== 3) {
-    throw new Error('Payload cifrato corrotto o incompleto');
+    throw new Error('Formato del payload cifrato non valido');
   }
 
   const [ivHex, authTagHex, cipherTextHex] = parts;
 
-  let keyBuffer: Buffer;
-  if (/^[0-9a-fA-F]{64}$/.test(keyHex)) {
-    keyBuffer = Buffer.from(keyHex, 'hex');
-  } else {
-    keyBuffer = crypto.createHash('sha256').update(keyHex).digest();
+  // Verifica lunghezze esadecimali: IV 12 byte = 24 hex, AuthTag 16 byte = 32 hex
+  if (!/^[0-9a-fA-F]{24}$/.test(ivHex) || !/^[0-9a-fA-F]{32}$/.test(authTagHex) || !/^[0-9a-fA-F]+$/.test(cipherTextHex)) {
+    throw new Error('Componenti del payload cifrato malformati');
   }
 
+  const keyBuffer = Buffer.from(keyHex.trim(), 'hex');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuffer, iv);
 
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuffer, iv);
   decipher.setAuthTag(authTag);
 
   let decrypted = decipher.update(cipherTextHex, 'hex', 'utf8');
@@ -180,9 +209,15 @@ export function decryptToken(encryptedPayload: string, keyHex: string): string {
 }
 
 /**
- * Autentica rigorosamente la richiesta verificando il JWT Supabase inviato nel Bearer.
- * Controlla che l'utente esista e che possieda un record approvato in seller_profiles.
- * Non si fida di alcun seller_id o user_id passato dal client.
+ * Autentica rigorosamente la richiesta verificando il JWT Supabase inviato nell'header Authorization Bearer.
+ * 
+ * Regole di sicurezza e isolamento:
+ * 1. Verifica crittografica e validità del JWT tramite supabaseAdmin.auth.getUser(jwt).
+ * 2. Estrazione dell'user_id verificato dal JWT; NON si fida mai di seller_id o user_id inviati dal client.
+ * 3. Recupero del profilo venditore strettamente associato all'user.id (tabella seller_profiles).
+ * 4. Controllo che il profilo esista e abbia status === 'approved'.
+ * 5. NESSUNA associazione automatica ad altri demolitori: ogni account appartiene esclusivamente al demolitore autenticato.
+ * 6. Anche gli amministratori devono possedere un proprio profilo seller approvato per connettere eBay.
  */
 export async function authenticateApprovedSeller(
   authHeader?: string
@@ -198,7 +233,7 @@ export async function authenticateApprovedSeller(
 
   const supabase = getSupabaseAdminClient();
 
-  // 1. Verifica crittografica e validità del JWT tramite Supabase Auth
+  // 1. Verifica crittografica del JWT tramite Supabase Auth
   const { data: userData, error: userError } = await supabase.auth.getUser(jwt);
   if (userError || !userData?.user) {
     throw new AuthenticationError(
@@ -207,9 +242,8 @@ export async function authenticateApprovedSeller(
   }
 
   const user = userData.user;
-  const isSuperAdmin = user.email?.trim().toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
 
-  // 2. Controllo del profilo autodemolitore associato all'utente autenticato
+  // 2. Controllo del profilo autodemolitore associato STRETTAMENTE all'utente autenticato
   const { data: sellerData, error: sellerError } = await supabase
     .from('seller_profiles')
     .select('id, user_id, business_name, status, city')
@@ -220,30 +254,17 @@ export async function authenticateApprovedSeller(
     throw new DatabaseError(`Errore verifica profilo autodemolitore: ${sellerError.message}`);
   }
 
-  // Se l'utente è il superadmin master ma non ha ancora un record seller_profiles personale,
-  // seleziona il primo venditore attivo o il proprio profilo per consentire le operazioni di test
-  if (isSuperAdmin && !sellerData) {
-    const { data: firstSeller } = await supabase
-      .from('seller_profiles')
-      .select('id, user_id, business_name, status, city')
-      .eq('status', 'approved')
-      .limit(1)
-      .maybeSingle();
-
-    if (firstSeller) {
-      return { user, seller: firstSeller as SellerProfileRecord };
-    }
-  }
-
+  // Nessuna associazione automatica o bypass per admin: ogni utente deve avere il suo profilo
   if (!sellerData) {
     throw new ForbiddenError(
-      'Nessun profilo autodemolitore associato all\'account utente autenticato'
+      'Nessun profilo autodemolitore associato all\'account utente autenticato. Per collegare eBay è necessario disporre di un profilo venditore registrato.'
     );
   }
 
-  if (sellerData.status !== 'approved' && !isSuperAdmin) {
+  // Verifica stato approvato
+  if (sellerData.status !== 'approved') {
     throw new ForbiddenError(
-      `Profilo autodemolitore non autorizzato (stato corrente: ${sellerData.status}). È richiesta l'approvazione da parte di Autopia.`
+      `Profilo autodemolitore non autorizzato (stato corrente: ${sellerData.status}). È richiesta l'approvazione formale dell'account da parte di Autopia.`
     );
   }
 

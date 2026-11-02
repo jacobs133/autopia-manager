@@ -5,7 +5,8 @@
 -- NOTA DI SICUREZZA:
 -- Questo script NON modifica alcuna tabella esistente (inventories, parts, seller_profiles, etc.).
 -- Le due tabelle create sono protette da Row Level Security (RLS) SENZA policy pubbliche.
--- L'accesso è consentito unicamente al ruolo `service_role` utilizzato dalle Netlify Functions.
+-- L'accesso è consentito unicamente al ruolo `service_role` utilizzato dalle Netlify Functions del backend.
+-- Nessun client desktop (Tauri) o utente anonimo può accedere direttamente a queste tabelle.
 -- ==============================================================================
 
 -- 1. Tabella temporanea per la validazione dello state anti-CSRF
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.ebay_oauth_states (
   used_at TIMESTAMPTZ
 );
 
--- Indici per ottimizzare la verifica e la pulizia automatica
+-- Indici per ottimizzare la verifica atomica e la pulizia periodica
 CREATE INDEX IF NOT EXISTS idx_ebay_oauth_states_lookup 
   ON public.ebay_oauth_states(state_token, is_used, expires_at);
 
@@ -31,12 +32,12 @@ CREATE INDEX IF NOT EXISTS idx_ebay_oauth_states_seller
 -- Abilitazione Row Level Security (RLS)
 ALTER TABLE public.ebay_oauth_states ENABLE ROW LEVEL SECURITY;
 
--- Nessuna policy per anon o authenticated: solo service_role può leggere/scrivere
+-- Nessuna policy per anon o authenticated: solo service_role può leggere e scrivere
 COMMENT ON TABLE public.ebay_oauth_states IS 'Stati OAuth monouso anti-CSRF per il collegamento eBay';
 
 
 -- 2. Tabella persistente per la memorizzazione dei token cifrati
--- I token sono archiviati cifrati con algoritmo AES-256-GCM.
+-- I token sono archiviati cifrati con algoritmo AES-256-GCM (IV 96-bit casuale + AuthTag 128-bit).
 -- Chiave unica (seller_id, environment) per separare in modo stagno Sandbox e Production.
 CREATE TABLE IF NOT EXISTS public.seller_ebay_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.seller_ebay_tokens (
   ebay_user_id VARCHAR(255),
   access_token_encrypted TEXT,
   access_token_expires_at TIMESTAMPTZ,
-  refresh_token_encrypted TEXT NOT NULL,
+  refresh_token_encrypted TEXT,
   refresh_token_expires_at TIMESTAMPTZ,
   scopes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   is_active BOOLEAN NOT NULL DEFAULT true,
@@ -54,11 +55,11 @@ CREATE TABLE IF NOT EXISTS public.seller_ebay_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   
-  -- Vincolo di unicità: un venditore ha al massimo 1 configurazione Sandbox e 1 Production
+  -- Vincolo di unicità: ciascun demolitore ha esattamente 1 configurazione per environment
   CONSTRAINT uq_seller_ebay_env UNIQUE (seller_id, environment)
 );
 
--- Indici di ricerca
+-- Indice di ricerca rapida per lo stato del canale
 CREATE INDEX IF NOT EXISTS idx_seller_ebay_tokens_seller_env 
   ON public.seller_ebay_tokens(seller_id, environment, is_active);
 
@@ -68,4 +69,4 @@ ALTER TABLE public.seller_ebay_tokens ENABLE ROW LEVEL SECURITY;
 -- Nessuna policy per anon o authenticated:
 -- Né il client desktop, né altri venditori possono eseguire SELECT o accedere ai token.
 -- Solo il backend Netlify (usando SUPABASE_SERVICE_ROLE_KEY) ha accesso.
-COMMENT ON TABLE public.seller_ebay_tokens IS 'Credenziali e token eBay cifrati AES-256-GCM associati all autodemolitore';
+COMMENT ON TABLE public.seller_ebay_tokens IS 'Credenziali e token eBay cifrati AES-256-GCM associati strettamente all autodemolitore';

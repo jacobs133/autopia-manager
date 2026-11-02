@@ -5,6 +5,7 @@ import {
   authenticateApprovedSeller,
   AuthenticationError,
   ForbiddenError,
+  DatabaseError,
 } from './ebay-shared.mts';
 
 export const handler: Handler = async (event: HandlerEvent) => {
@@ -30,19 +31,19 @@ export const handler: Handler = async (event: HandlerEvent) => {
   try {
     const supabase = getSupabaseAdminClient();
 
-    // 1. Verifica autenticazione e autorizzazione demolitore
+    // 1. Verifica autenticazione e autorizzazione demolitore (Zero-Trust)
     const authHeader = event.headers.authorization || event.headers.Authorization;
     const { seller } = await authenticateApprovedSeller(authHeader);
 
-    // 2. Disconnessione locale: invalidazione dello stato e rimozione immediata dei token salvati
-    // I token vengono cancellati (azzerati) dal database per impedirne qualsiasi utilizzo futuro da Autopia Manager
+    // 2. Disconnessione locale: invalidazione dello stato e azzeramento immediato dei token nel DB
+    // Sia l'access token sia il refresh token vengono impostati a NULL per renderli totalmente inutilizzabili
     const nowIso = new Date().toISOString();
     const { error: updateError } = await supabase
       .from('seller_ebay_tokens')
       .update({
         is_active: false,
         access_token_encrypted: null,
-        refresh_token_encrypted: '[REVOCATO_LOCALMENTE]',
+        refresh_token_encrypted: null,
         disconnected_at: nowIso,
         updated_at: nowIso,
       })
@@ -50,7 +51,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
       .eq('environment', 'sandbox');
 
     if (updateError) {
-      console.error('[ebay-oauth-disconnect] Errore aggiornamento record nel database:', updateError);
+      console.error('[ebay-oauth-disconnect] Errore aggiornamento database:', updateError.message);
       return {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -64,7 +65,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify({
         success: true,
         message:
-          'Account eBay scollegato localmente con successo. I token di accesso sono stati eliminati da Autopia. Per revocare definitivamente l\'autorizzazione applicativa remota su eBay, l\'utente può accedere alla sezione "Accesso di terze parti" nelle impostazioni del proprio account eBay.',
+          'Account eBay scollegato localmente con successo. I token salvati sono stati eliminati dal database di Autopia. Si ricorda che questa operazione disconnette l\'account dal gestionale: per revocare l\'autorizzazione applicativa concessa sui sistemi eBay, è possibile gestire i permessi nella sezione "Accesso di terze parti" delle impostazioni del proprio account eBay.',
       }),
     };
   } catch (err: unknown) {
@@ -76,8 +77,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
       };
     }
 
+    if (err instanceof DatabaseError) {
+      return {
+        statusCode: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err.message }),
+      };
+    }
+
     const message = err instanceof Error ? err.message : 'Errore interno del server';
-    console.error('[ebay-oauth-disconnect] Errore imprevisto:', err);
+    console.error('[ebay-oauth-disconnect] Errore imprevisto:', message);
 
     return {
       statusCode: 500,

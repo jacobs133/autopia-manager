@@ -9,13 +9,14 @@ import {
   EBAY_SANDBOX_SCOPES,
   AuthenticationError,
   ForbiddenError,
+  DatabaseError,
 } from './ebay-shared.mts';
 
 export const handler: Handler = async (event: HandlerEvent) => {
   const origin = event.headers.origin || event.headers.Origin;
   const corsHeaders = getCorsHeaders(origin);
 
-  // Gestione pre-flight OPTIONS
+  // Gestione pre-flight OPTIONS per CORS
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 204,
@@ -40,11 +41,11 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const authHeader = event.headers.authorization || event.headers.Authorization;
     const { user, seller } = await authenticateApprovedSeller(authHeader);
 
-    // 2. Generazione del parametro state crittograficamente sicuro (256-bit)
+    // 2. Generazione del parametro state crittograficamente sicuro (256-bit CSPRNG)
     const stateToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minuti di validità
 
-    // 3. Persistenza dello state associato atomicamente al demolitore nel database
+    // 3. Persistenza dello state associato atomicamente al demolitore autenticato
     const { error: insertError } = await supabase.from('ebay_oauth_states').insert({
       state_token: stateToken,
       seller_id: seller.id,
@@ -55,12 +56,12 @@ export const handler: Handler = async (event: HandlerEvent) => {
     });
 
     if (insertError) {
-      console.error('[ebay-oauth-init] Errore inserimento state nel database:', insertError);
+      console.error('[ebay-oauth-init] Errore salvataggio state:', insertError.message);
       return {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: 'Impossibile registrare la sessione di autenticazione temporanea nel database.',
+          error: 'Impossibile registrare la sessione di autorizzazione temporanea nel database.',
         }),
       };
     }
@@ -78,6 +79,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
     const authorizationUrl = `${EBAY_SANDBOX_AUTH_URL}?${authUrlParams.toString()}`;
 
+    // 5. Restituzione dell'URL di autorizzazione al client desktop (nessun segreto esposto)
     return {
       statusCode: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -100,8 +102,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
       };
     }
 
+    if (err instanceof DatabaseError) {
+      return {
+        statusCode: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err.message }),
+      };
+    }
+
     const message = err instanceof Error ? err.message : 'Errore interno del server';
-    console.error('[ebay-oauth-init] Errore imprevisto:', err);
+    console.error('[ebay-oauth-init] Errore imprevisto:', message);
 
     return {
       statusCode: 500,

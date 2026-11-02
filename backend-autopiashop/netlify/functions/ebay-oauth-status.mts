@@ -5,6 +5,7 @@ import {
   authenticateApprovedSeller,
   AuthenticationError,
   ForbiddenError,
+  DatabaseError,
 } from './ebay-shared.mts';
 
 export const handler: Handler = async (event: HandlerEvent) => {
@@ -30,11 +31,12 @@ export const handler: Handler = async (event: HandlerEvent) => {
   try {
     const supabase = getSupabaseAdminClient();
 
-    // 1. Verifica autenticazione e seller_profile approvato
+    // 1. Verifica autenticazione e seller_profile approvato (Zero-Trust)
     const authHeader = event.headers.authorization || event.headers.Authorization;
     const { seller } = await authenticateApprovedSeller(authHeader);
 
-    // 2. Lettura dello stato di connessione per il demolitore specifico
+    // 2. Lettura dello stato di connessione per il solo demolitore autenticato (Isolamento Totale)
+    // Non vengono MAI selezionate le colonne contenenti i token cifrati
     const { data: tokenRow, error: tokenError } = await supabase
       .from('seller_ebay_tokens')
       .select('id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
@@ -43,7 +45,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
       .maybeSingle();
 
     if (tokenError) {
-      console.error('[ebay-oauth-status] Errore lettura credenziali dal database:', tokenError);
+      console.error('[ebay-oauth-status] Errore lettura DB:', tokenError.message);
       return {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -80,8 +82,16 @@ export const handler: Handler = async (event: HandlerEvent) => {
       };
     }
 
+    if (err instanceof DatabaseError) {
+      return {
+        statusCode: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err.message }),
+      };
+    }
+
     const message = err instanceof Error ? err.message : 'Errore interno del server';
-    console.error('[ebay-oauth-status] Errore imprevisto:', err);
+    console.error('[ebay-oauth-status] Errore imprevisto:', message);
 
     return {
       statusCode: 500,

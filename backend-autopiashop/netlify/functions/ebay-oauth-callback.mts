@@ -3,6 +3,7 @@ import {
   getRequiredEnvVars,
   getSupabaseAdminClient,
   encryptToken,
+  escapeHtml,
   EBAY_SANDBOX_TOKEN_URL,
   EBAY_SANDBOX_IDENTITY_URL,
 } from './ebay-shared.mts';
@@ -24,7 +25,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
           .update({ is_used: true, used_at: new Date().toISOString() })
           .eq('state_token', state);
       } catch (e) {
-        console.warn('[ebay-oauth-callback] Impossibile marcare state come annullato:', e);
+        console.warn('[ebay-oauth-callback] Impossibile marcare state come annullato:', e instanceof Error ? e.message : 'errore');
       }
     }
 
@@ -33,11 +34,11 @@ export const handler: Handler = async (event: HandlerEvent) => {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
       body: renderHtmlPage({
         success: false,
-        title: 'Autorizzazione eBay Annullata',
+        title: 'Autorizzazione eBay Annullata o Rifiutata',
         message:
           errorDescription ||
           'La richiesta di autorizzazione è stata interrotta o rifiutata sul portale eBay Sandbox.',
-        hint: 'Puoi chiudere questa finestra del browser e riprovare il collegamento direttamente da Autopia Manager.',
+        hint: 'Puoi chiudere questa finestra del browser e riprovare la procedura direttamente da Autopia Manager quando desideri.',
       }),
     };
   }
@@ -51,7 +52,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
         success: false,
         title: 'Parametri Callback Mancanti',
         message: 'La richiesta ricevuta da eBay non include il codice di autorizzazione o il parametro state.',
-        hint: 'Avvia nuovamente la procedura dall\'applicazione gestionale desktop.',
+        hint: 'Torna in Autopia Manager e avvia la procedura dal pulsante "Collega account eBay (Sandbox)".',
       }),
     };
   }
@@ -61,7 +62,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const supabase = getSupabaseAdminClient();
 
     // 3. Consumo atomico dello state anti-CSRF con verifica di scadenza e unicità
-    // La query aggiorna is_used = true ed estrae seller_id solo se lo state è valido, non ancora usato e non scaduto
+    // L'aggiornamento imposta is_used = true ed estrae i dati solo se lo state è valido, non usato e non scaduto
     const nowIso = new Date().toISOString();
     const { data: stateData, error: stateError } = await supabase
       .from('ebay_oauth_states')
@@ -73,7 +74,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
       .maybeSingle();
 
     if (stateError || !stateData) {
-      console.warn('[ebay-oauth-callback] Rifiutato state non valido, già utilizzato o scaduto:', state);
+      console.warn('[ebay-oauth-callback] Rifiutato state non valido, già utilizzato o scaduto.');
       return {
         statusCode: 403,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -90,7 +91,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const { seller_id, environment } = stateData;
 
     // 4. Scambio del codice di autorizzazione con i token di accesso e di refresh
-    // Autenticazione HTTP Basic (Client ID:Client Secret)
+    // Autenticazione HTTP Basic (Client ID : Client Secret)
     const basicAuth = Buffer.from(`${ebayClientId}:${ebayClientSecret}`).toString('base64');
 
     const tokenRequestBody = new URLSearchParams({
@@ -110,16 +111,15 @@ export const handler: Handler = async (event: HandlerEvent) => {
     });
 
     if (!tokenResponse.ok) {
-      const errPayload = await tokenResponse.text();
-      console.error('[ebay-oauth-callback] Errore risposta da eBay token endpoint:', errPayload);
+      console.error('[ebay-oauth-callback] Errore risposta da eBay token endpoint (HTTP status):', tokenResponse.status);
       return {
         statusCode: 502,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
         body: renderHtmlPage({
           success: false,
           title: 'Scambio Token con eBay Fallito',
-          message: `Il server eBay Sandbox ha restituito un errore HTTP ${tokenResponse.status}.`,
-          hint: 'Verifica la corrispondenza del RuName e delle credenziali Sandbox nel Developer Portal.',
+          message: `Il server eBay Sandbox ha restituito un errore di comunicazione (HTTP ${tokenResponse.status}).`,
+          hint: 'Verifica che il RuName e le credenziali Sandbox configurate su Netlify corrispondano a quelle del Developer Portal eBay.',
         }),
       };
     }
@@ -131,37 +131,48 @@ export const handler: Handler = async (event: HandlerEvent) => {
     const refreshTokenExpiresIn = tokenJson.refresh_token_expires_in || 47304000; // ~18 mesi
 
     if (!refreshToken) {
-      throw new Error('eBay non ha restituito il refresh token atteso.');
+      return {
+        statusCode: 502,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        body: renderHtmlPage({
+          success: false,
+          title: 'Token di Refresh Mancante',
+          message: 'Il server eBay non ha restituito il token di refresh necessario per la sincronizzazione.',
+          hint: 'Assicurati di aver concesso i consensi richiesti durante la fase di accesso su eBay.',
+        }),
+      };
     }
 
-    // 5. Interrogazione di verifica dell'identità dell'account eBay (Identity API)
+    // 5. Interrogazione Identity API per recuperare lo username reale di test
     let ebayUsername: string | null = null;
     let ebayUserId: string | null = null;
 
-    try {
-      const identityRes = await fetch(EBAY_SANDBOX_IDENTITY_URL, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-        },
-      });
+    if (accessToken) {
+      try {
+        const identityRes = await fetch(EBAY_SANDBOX_IDENTITY_URL, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+        });
 
-      if (identityRes.ok) {
-        const identityData = await identityRes.json();
-        ebayUsername = identityData.username || identityData.userId || null;
-        ebayUserId = identityData.userId || null;
-      } else {
+        if (identityRes.ok) {
+          const identityData = await identityRes.json();
+          ebayUsername = identityData.username || identityData.userId || null;
+          ebayUserId = identityData.userId || null;
+        } else {
+          console.warn('[ebay-oauth-callback] Identity API ha risposto con status non-200:', identityRes.status);
+        }
+      } catch (identityErr) {
         console.warn(
-          '[ebay-oauth-callback] Identity API ha risposto con status:',
-          identityRes.status
+          '[ebay-oauth-callback] Impossibile recuperare dettagli profilo da Identity API:',
+          identityErr instanceof Error ? identityErr.message : 'errore'
         );
       }
-    } catch (identityErr) {
-      console.warn('[ebay-oauth-callback] Impossibile recuperare dettagli profilo da Identity API:', identityErr);
     }
 
-    // 6. Cifratura a riposo AES-256-GCM dei token prima della memorizzazione sul database
+    // 6. Cifratura a riposo AES-256-GCM con validazione a 32 byte prima della scrittura nel DB
     const encryptedRefreshToken = encryptToken(refreshToken, encryptionKeyHex);
     const encryptedAccessToken = accessToken ? encryptToken(accessToken, encryptionKeyHex) : null;
 
@@ -191,20 +202,20 @@ export const handler: Handler = async (event: HandlerEvent) => {
     );
 
     if (upsertError) {
-      console.error('[ebay-oauth-callback] Errore salvataggio credenziali cifrate nel DB:', upsertError);
+      console.error('[ebay-oauth-callback] Errore salvataggio credenziali nel DB:', upsertError.message);
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
         body: renderHtmlPage({
           success: false,
           title: 'Errore Salvataggio Credenziali',
-          message: 'I token sono stati emessi da eBay ma non è stato possibile salvarli nel database Supabase.',
-          hint: 'Controlla che la tabella seller_ebay_tokens esista e sia accessibile alla Service Role Key.',
+          message: 'I token sono stati emessi da eBay ma non è stato possibile salvarli nel database del gestionale.',
+          hint: 'Controlla che la tabella seller_ebay_tokens esista e sia accessibile alla Service Role Key di Supabase.',
         }),
       };
     }
 
-    // 8. Visualizzazione pagina di conferma successo
+    // 8. Visualizzazione pagina di conferma successo protetta da XSS
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -214,12 +225,11 @@ export const handler: Handler = async (event: HandlerEvent) => {
         message: `L'account eBay ${
           ebayUsername ? `"${ebayUsername}"` : 'Sandbox'
         } è stato associato con successo al tuo profilo autodemolitore in Autopia Manager.`,
-        hint: 'Puoi chiudere questa scheda del browser. Tornando nell\'applicazione desktop, lo stato del canale eBay si aggiornerà automaticamente su "COLLEGATO (SANDBOX)".',
+        hint: 'Puoi chiudere questa scheda del browser. Tornando nell\'applicazione desktop Autopia Manager, clicca su "Aggiorna Stato" (oppure attendi la verifica automatica) per visualizzare lo stato "COLLEGATO (SANDBOX)".',
       }),
     };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Errore imprevisto durante il callback OAuth';
-    console.error('[ebay-oauth-callback] Eccezione callback:', err);
+    console.error('[ebay-oauth-callback] Eccezione callback:', err instanceof Error ? err.message : 'errore');
 
     return {
       statusCode: 500,
@@ -227,8 +237,8 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: renderHtmlPage({
         success: false,
         title: 'Errore Interno del Server',
-        message: message,
-        hint: 'Riprova la procedura o verifica i log della Netlify Function.',
+        message: 'Si è verificato un errore imprevisto durante l\'elaborazione del callback OAuth.',
+        hint: 'Torna in Autopia Manager e riprova la procedura di collegamento.',
       }),
     };
   }
@@ -241,7 +251,15 @@ interface HtmlTemplateParams {
   hint: string;
 }
 
+/**
+ * Genera la pagina HTML protetta contro XSS applicando escapeHtml a tutti i campi dinamici.
+ * Non mostra token, password o chiavi private.
+ */
 function renderHtmlPage({ success, title, message, hint }: HtmlTemplateParams): string {
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const safeHint = escapeHtml(hint);
+
   const primaryColor = success ? '#10b981' : '#f59e0b';
   const bgColor = '#090d16';
   const cardBg = '#0f172a';
@@ -252,7 +270,7 @@ function renderHtmlPage({ success, title, message, hint }: HtmlTemplateParams): 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - Autopia Manager</title>
+  <title>${safeTitle} - Autopia Manager</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -321,9 +339,9 @@ function renderHtmlPage({ success, title, message, hint }: HtmlTemplateParams): 
 <body>
   <div class="card">
     <div class="badge">${success ? 'Connessione Riuscita' : 'Attenzione'}</div>
-    <h1>${title}</h1>
-    <p class="description">${message}</p>
-    <div class="hint-box">${hint}</div>
+    <h1>${safeTitle}</h1>
+    <p class="description">${safeMessage}</p>
+    <div class="hint-box">${safeHint}</div>
     <div class="brand">Autopia Manager • Piattaforma Gestionale Autodemolizioni</div>
   </div>
 </body>
