@@ -11,13 +11,14 @@ import {
   User,
   Building2,
   ExternalLink,
+  Globe,
 } from 'lucide-react';
 import { TitleBar } from './TitleBar';
 import { StatusBar } from './StatusBar';
 import { UpdateNotificationModal } from '../updater/UpdateNotificationModal';
 import { useAuth } from '../../contexts/AuthContext';
 
-export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'listings' | 'import' | 'settings' | 'admin';
+export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'listings' | 'import' | 'ebay' | 'settings' | 'admin';
 
 interface DesktopShellProps {
   children?: React.ReactNode;
@@ -54,6 +55,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         return 'Annunci Marketplace Autopia';
       case 'import':
         return 'Importazione CSV Ricambi';
+      case 'ebay':
+        return 'Integrazione Canale eBay (Sandbox)';
       case 'settings':
         return 'Connessione Backend & Autenticazione';
       case 'admin':
@@ -102,6 +105,13 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       id: 'import',
       label: 'Importazione CSV',
       icon: <FileSpreadsheet className="w-4 h-4" />,
+      disabled: !isApproved,
+    },
+    {
+      id: 'ebay',
+      label: 'Canale eBay',
+      icon: <Globe className="w-4 h-4 text-amber-400" />,
+      badge: 'Sandbox',
       disabled: !isApproved,
     },
   ];

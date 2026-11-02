@@ -15,6 +15,7 @@ import { PartsManager } from './components/parts/PartsManager';
 import { ListingsManager } from './components/listings/ListingsManager';
 import { CsvImportManager } from './components/import/CsvImportManager';
 import { AdminManager } from './components/admin/AdminManager';
+import { EbayManager } from './components/ebay/EbayManager';
 import {
   Wrench,
   CheckCircle2,
@@ -33,6 +34,7 @@ import {
   FileSpreadsheet,
   Settings,
   HelpCircle,
+  Globe,
 } from 'lucide-react';
 
 function AppContent() {
@@ -296,6 +298,26 @@ function AppContent() {
               </div>
             </div>
 
+            {/* Scheda Canale eBay Sandbox (Fase 3) */}
+            <div
+              onClick={() => setActiveSection('ebay')}
+              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+                  Marketplace Esterno
+                </span>
+                <Globe className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Canale eBay (Sandbox)</div>
+              <p className="text-xs text-slate-400">
+                Collegamento account tramite OAuth 2.0 protetto, stato autorizzazione e predisposizione sync.
+              </p>
+              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
+                <span>Gestisci Canale eBay →</span>
+              </div>
+            </div>
+
             {/* Scheda Supervisione Amministratore (Visibile solo per lollogamer2009@gmail.com) */}
             {isAdmin && (
               <div
@@ -323,7 +345,7 @@ function AppContent() {
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
             <h2 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Autopia Manager Fase 2 Operativa</span>
+              <span>Autopia Manager Fase 2 Operativa & Fase 3 Avviata</span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
               <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1">
@@ -355,6 +377,9 @@ function AppContent() {
 
       {/* Modulo Importazione CSV (Fase 2) */}
       {activeSection === 'import' && <CsvImportManager />}
+
+      {/* Modulo Canale eBay Sandbox (Fase 3) */}
+      {activeSection === 'ebay' && <EbayManager />}
 
       {/* Modulo Amministrazione Piattaforma (Fase 2 - Riservato lollogamer2009@gmail.com) */}
       {activeSection === 'admin' && <AdminManager />}
