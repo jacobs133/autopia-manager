@@ -17,15 +17,23 @@ export interface AuthenticatedSellerContext {
 export const EBAY_SANDBOX_AUTH_URL = 'https://auth.sandbox.ebay.com/oauth2/authorize';
 export const EBAY_SANDBOX_TOKEN_URL = 'https://api.sandbox.ebay.com/identity/v1/oauth2/token';
 export const EBAY_SANDBOX_IDENTITY_URL = 'https://apiz.sandbox.ebay.com/commerce/identity/v1/user';
+export const EBAY_SANDBOX_INVENTORY_URL = 'https://api.sandbox.ebay.com/sell/inventory/v1';
+export const EBAY_SANDBOX_FULFILLMENT_URL = 'https://api.sandbox.ebay.com/sell/fulfillment/v1';
 
 /**
- * Scope minimi richiesti per la connessione:
+ * Scope completi richiesti per la connessione (Fase 3A, 3B e 3C):
  * - https://api.ebay.com/oauth/api_scope (base identity)
- * - https://api.ebay.com/oauth/api_scope/commerce.identity.readonly (necessario per Commerce Identity API /user)
+ * - https://api.ebay.com/oauth/api_scope/commerce.identity.readonly (Identity API /user)
+ * - https://api.ebay.com/oauth/api_scope/sell.inventory (Fase 3B: pubblicazione annunci e sync inventario)
+ * - https://api.ebay.com/oauth/api_scope/sell.account (Fase 3B: politiche spedizione e reso)
+ * - https://api.ebay.com/oauth/api_scope/sell.fulfillment (Fase 3C: ordini e tracking spedizioni)
  */
 export const EBAY_SANDBOX_SCOPES = [
   'https://api.ebay.com/oauth/api_scope',
   'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
+  'https://api.ebay.com/oauth/api_scope/sell.inventory',
+  'https://api.ebay.com/oauth/api_scope/sell.account',
+  'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
 ].join(' ');
 
 /**
@@ -296,4 +304,123 @@ export class DatabaseError extends Error {
     super(message);
     this.name = 'DatabaseError';
   }
+}
+
+/**
+ * Recupera l'access token eBay valido per il demolitore specificato.
+ * Se l'access token corrente è scaduto o in scadenza (entro 5 minuti),
+ * esegue automaticamente il token refresh tramite il refresh_token cifrato,
+ * aggiorna il database in modo atomico e sicuro, e restituisce il nuovo access token.
+ */
+export async function getValidEbayAccessToken(sellerId: string): Promise<{
+  accessToken: string;
+  ebayUsername: string | null;
+}> {
+  const { ebayClientId, ebayClientSecret, tokenEncryptionKey } = getRequiredEnvVars();
+  const supabase = getSupabaseAdminClient();
+
+  const { data: tokenRecord, error } = await supabase
+    .from('seller_ebay_tokens')
+    .select('*')
+    .eq('seller_id', sellerId)
+    .eq('environment', 'sandbox')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    throw new DatabaseError(`Errore recupero credenziali eBay: ${error.message}`);
+  }
+
+  if (!tokenRecord || !tokenRecord.encrypted_access_token) {
+    throw new ForbiddenError('Nessun account eBay Sandbox collegato per questo demolitore.');
+  }
+
+  // Verifica scadenza: margine di sicurezza di 5 minuti (300.000 ms)
+  const expiresAt = tokenRecord.access_token_expires_at
+    ? new Date(tokenRecord.access_token_expires_at).getTime()
+    : 0;
+  const now = Date.now();
+  const isExpiringSoon = expiresAt - now < 5 * 60 * 1000;
+
+  if (!isExpiringSoon) {
+    const accessToken = decryptToken(
+      tokenRecord.encrypted_access_token,
+      tokenRecord.access_token_iv,
+      tokenRecord.access_token_tag,
+      tokenEncryptionKey
+    );
+    return { accessToken, ebayUsername: tokenRecord.ebay_username || null };
+  }
+
+  // Refresh token flow
+  if (!tokenRecord.encrypted_refresh_token) {
+    throw new ForbiddenError('Refresh token eBay non disponibile. Riconnetti l\'account eBay.');
+  }
+
+  const refreshToken = decryptToken(
+    tokenRecord.encrypted_refresh_token,
+    tokenRecord.refresh_token_iv,
+    tokenRecord.refresh_token_tag,
+    tokenEncryptionKey
+  );
+
+  const basicAuth = Buffer.from(`${ebayClientId}:${ebayClientSecret}`).toString('base64');
+  const bodyParams = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    scope: EBAY_SANDBOX_SCOPES,
+  });
+
+  const response = await fetch(EBAY_SANDBOX_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`,
+    },
+    body: bodyParams.toString(),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[ebay-shared] Errore refresh token eBay:', errorText);
+    throw new ForbiddenError('Sessione eBay scaduta o revocata. Riconnetti l\'account tramite OAuth.');
+  }
+
+  const tokenData = await response.json();
+  const newAccessToken = tokenData.access_token;
+  const expiresInSeconds = tokenData.expires_in || 7200;
+  const newExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+
+  // Cifra il nuovo access token
+  const encAccess = encryptToken(newAccessToken, tokenEncryptionKey);
+
+  // Aggiorna anche il refresh token se inviato uno nuovo rotante
+  let encRefresh = null;
+  if (tokenData.refresh_token) {
+    encRefresh = encryptToken(tokenData.refresh_token, tokenEncryptionKey);
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    encrypted_access_token: encAccess.cipherText,
+    access_token_iv: encAccess.iv,
+    access_token_tag: encAccess.tag,
+    access_token_expires_at: newExpiresAt,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (encRefresh) {
+    updatePayload.encrypted_refresh_token = encRefresh.cipherText;
+    updatePayload.refresh_token_iv = encRefresh.iv;
+    updatePayload.refresh_token_tag = encRefresh.tag;
+  }
+
+  await supabase
+    .from('seller_ebay_tokens')
+    .update(updatePayload)
+    .eq('id', tokenRecord.id);
+
+  return {
+    accessToken: newAccessToken,
+    ebayUsername: tokenRecord.ebay_username || null,
+  };
 }

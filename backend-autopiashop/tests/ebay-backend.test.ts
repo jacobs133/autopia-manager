@@ -138,6 +138,16 @@ console.log('\n[3] Test RuName Letterale e Scope Identity');
     'Lo scope commerce.identity.readonly deve essere presente per interrogare l\'Identity API'
   );
 
+  // Verifica degli scope Sell Inventory e Fulfillment per le Fasi 3B e 3C
+  assert.ok(
+    EBAY_SANDBOX_SCOPES.includes('https://api.ebay.com/oauth/api_scope/sell.inventory'),
+    'Lo scope sell.inventory deve essere presente per la pubblicazione e sync giacenze (Fase 3B)'
+  );
+  assert.ok(
+    EBAY_SANDBOX_SCOPES.includes('https://api.ebay.com/oauth/api_scope/sell.fulfillment'),
+    'Lo scope sell.fulfillment deve essere presente per gli ordini e il tracking (Fase 3C)'
+  );
+
   console.log('  ✓ RuName letterale e scope commerce.identity.readonly: OK');
 }
 

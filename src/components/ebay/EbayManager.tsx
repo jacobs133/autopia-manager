@@ -19,20 +19,45 @@ import {
   Unplug,
   Clock,
   Sparkles,
+  Package,
+  ShoppingBag,
+  Truck,
+  Plus,
+  Send,
+  Eye,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import type { EbayConnectionInfo } from '../../types/ebay';
+import type {
+  EbayConnectionInfo,
+  EbayListingItem,
+  EbayOrder,
+} from '../../types/ebay';
 import {
   fetchEbayConnectionStatus,
   initiateEbayOAuth,
   disconnectEbayAccount,
   getEbayOAuthBackendBaseUrl,
+  fetchEbayListings,
+  publishPartToEbay,
+  syncEbayInventoryQuantity,
+  fetchLocalEbayOrders,
+  syncOrdersFromEbay,
+  fulfillEbayOrder,
 } from '../../services/ebayService';
+import { fetchSellerInventory } from '../../services/partsService';
+import type { InventoryItem } from '../../types/inventory';
+
+type EbayTab = 'oauth' | 'listings' | 'orders';
 
 export const EbayManager: React.FC = () => {
   const { user, sellerProfile, effectiveSellerProfile, isAdmin } = useAuth();
   const activeSeller = effectiveSellerProfile || sellerProfile;
 
+  const [activeTab, setActiveTab] = useState<EbayTab>('oauth');
+
+  // Stato Connessione OAuth
   const [connectionInfo, setConnectionInfo] = useState<EbayConnectionInfo | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isInitiating, setIsInitiating] = useState<boolean>(false);
@@ -41,7 +66,28 @@ export const EbayManager: React.FC = () => {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [showArchitectureDetails, setShowArchitectureDetails] = useState<boolean>(false);
 
-  // Caricamento dello stato effettivo dal backend
+  // Stato Inserzioni eBay (Fase 3B)
+  const [listings, setListings] = useState<EbayListingItem[]>([]);
+  const [isLoadingListings, setIsLoadingListings] = useState<boolean>(false);
+  const [warehouseItems, setWarehouseItems] = useState<InventoryItem[]>([]);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
+  const [publishForm, setPublishForm] = useState<{
+    price: string;
+    quantity: string;
+    sku: string;
+    title: string;
+  }>({ price: '', quantity: '1', sku: '', title: '' });
+  const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [updatingSku, setUpdatingSku] = useState<string | null>(null);
+
+  // Stato Ordini eBay (Fase 3C)
+  const [orders, setOrders] = useState<EbayOrder[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
+  const [isSyncingOrders, setIsSyncingOrders] = useState<boolean>(false);
+  const [trackingForms, setTrackingForms] = useState<Record<string, { tracking: string; carrier: string }>>({});
+  const [fulfillingOrderId, setFulfillingOrderId] = useState<string | null>(null);
+
+  // 1. Caricamento dello stato effettivo OAuth dal backend
   const loadStatus = useCallback(async (isSilent = false) => {
     if (!isSilent) {
       setIsLoading(true);
@@ -55,6 +101,49 @@ export const EbayManager: React.FC = () => {
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
+
+  // 2. Caricamento Inserzioni e Magazzino per Fase 3B
+  const loadListingsAndWarehouse = useCallback(async () => {
+    if (!activeSeller?.id) return;
+    setIsLoadingListings(true);
+
+    const [listingsRes, warehouseRes] = await Promise.all([
+      fetchEbayListings(),
+      fetchSellerInventory({
+        sellerId: activeSeller.id,
+        filters: {},
+        page: 1,
+        pageSize: 50,
+      }),
+    ]);
+
+    if (listingsRes.data) {
+      setListings(listingsRes.data);
+    }
+    if (warehouseRes.data) {
+      setWarehouseItems(warehouseRes.data);
+    }
+    setIsLoadingListings(false);
+  }, [activeSeller?.id]);
+
+  // 3. Caricamento Ordini per Fase 3C
+  const loadOrders = useCallback(async () => {
+    setIsLoadingOrders(true);
+    const res = await fetchLocalEbayOrders();
+    if (res.data) {
+      setOrders(res.data);
+    }
+    setIsLoadingOrders(false);
+  }, []);
+
+  // Gestione cambio tab
+  useEffect(() => {
+    if (activeTab === 'listings') {
+      loadListingsAndWarehouse();
+    } else if (activeTab === 'orders') {
+      loadOrders();
+    }
+  }, [activeTab, loadListingsAndWarehouse, loadOrders]);
 
   // Avvio del collegamento OAuth con reindirizzamento al portale eBay Sandbox
   const handleConnect = async () => {
@@ -73,24 +162,21 @@ export const EbayManager: React.FC = () => {
 
       if (res.authorizationUrl) {
         setActionNotice(
-          'Reindirizzamento in corso verso eBay Sandbox nel browser predefinito. Completa l\'accesso con il tuo account utente Sandbox di test.'
+          'Reindirizzamento verso eBay Sandbox nel browser. Accedi con il tuo account utente Sandbox per autorizzare i permessi (Fase 3A, 3B e 3C).'
         );
 
-        // Apertura sicura nel browser predefinito di sistema
         if (typeof window !== 'undefined') {
           const opened = window.open(res.authorizationUrl, '_blank', 'noopener,noreferrer');
           if (!opened) {
-            // Se il popup viene bloccato, forniamo link diretto
             setActionNotice(
-              `Il browser ha bloccato l'apertura automatica. Clicca sul link per aprire la pagina di consenso eBay Sandbox: ${res.authorizationUrl}`
+              `Il browser ha bloccato l'apertura automatica della finestra. Clicca su questo link per autorizzare: ${res.authorizationUrl}`
             );
           }
         }
 
-        // Ricarica lo stato dopo l'apertura del browser per rilevare eventuale completamento
         setTimeout(() => {
           loadStatus(true);
-        }, 3000);
+        }, 4000);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Eccezione imprevista durante l\'avvio di OAuth';
@@ -120,12 +206,102 @@ export const EbayManager: React.FC = () => {
     setIsDisconnecting(false);
   };
 
+  // Pubblicazione Ricambio su eBay (Fase 3B)
+  const handlePublish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInventoryItem) return;
+
+    setIsPublishing(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const price = parseFloat(publishForm.price) || selectedInventoryItem.price || 10;
+    const quantity = parseInt(publishForm.quantity, 10) || selectedInventoryItem.quantity || 1;
+    const title = publishForm.title.trim() || selectedInventoryItem.title;
+    const sku = publishForm.sku.trim() || `AUT-${selectedInventoryItem.id.slice(0, 8).toUpperCase()}`;
+
+    const res = await publishPartToEbay({
+      inventory_id: selectedInventoryItem.id,
+      sku,
+      title,
+      description: selectedInventoryItem.description || undefined,
+      price,
+      quantity,
+      condition: selectedInventoryItem.condition || undefined,
+      oem_code: selectedInventoryItem.oem_code || undefined,
+      images: [],
+    });
+
+    if (!res.success) {
+      setActionError(res.error || 'Errore durante la pubblicazione del ricambio su eBay.');
+    } else {
+      setActionNotice(res.message || `Ricambio ${sku} pubblicato con successo su eBay Sandbox!`);
+      setSelectedInventoryItem(null);
+      await loadListingsAndWarehouse();
+    }
+    setIsPublishing(false);
+  };
+
+  // Sincronizzazione Giacenza Singolo Articolo eBay (Fase 3B)
+  const handleSyncQuantity = async (listing: EbayListingItem, newQuantity: number) => {
+    setUpdatingSku(listing.sku);
+    setActionError(null);
+    setActionNotice(null);
+
+    const res = await syncEbayInventoryQuantity(listing.sku, newQuantity, listing.inventory_id || undefined);
+    if (!res.success) {
+      setActionError(res.error || `Errore sincronizzazione giacenza per SKU ${listing.sku}`);
+    } else {
+      setActionNotice(res.message || `Giacenza per ${listing.sku} aggiornata a ${newQuantity} pezzi.`);
+      await loadListingsAndWarehouse();
+    }
+    setUpdatingSku(null);
+  };
+
+  // Sincronizzazione Ordini da eBay Fulfillment API (Fase 3C)
+  const handleSyncOrders = async () => {
+    setIsSyncingOrders(true);
+    setActionError(null);
+    setActionNotice(null);
+
+    const res = await syncOrdersFromEbay();
+    if (!res.success) {
+      setActionError(res.error || 'Impossibile scaricare gli ordini da eBay Fulfillment API.');
+    } else {
+      setActionNotice(res.message || `Scaricati e sincronizzati ${res.orders.length} ordini eBay Sandbox!`);
+      await loadOrders();
+    }
+    setIsSyncingOrders(false);
+  };
+
+  // Evasione Ordine con Tracking (Fase 3C)
+  const handleFulfillOrder = async (orderId: string, ebayOrderId: string) => {
+    const form = trackingForms[orderId];
+    if (!form || !form.tracking.trim()) {
+      alert('Inserisci un codice di tracking valido prima di completare la spedizione.');
+      return;
+    }
+
+    setFulfillingOrderId(orderId);
+    setActionError(null);
+    setActionNotice(null);
+
+    const res = await fulfillEbayOrder(ebayOrderId, form.tracking.trim(), form.carrier);
+    if (!res.success) {
+      setActionError(res.error || 'Errore invio tracking a eBay.');
+    } else {
+      setActionNotice(res.message || `Ordine ${ebayOrderId} contrassegnato come spedito su eBay!`);
+      await loadOrders();
+    }
+    setFulfillingOrderId(null);
+  };
+
   const isConnected = Boolean(connectionInfo?.isConnected);
   const backendUrl = getEbayOAuthBackendBaseUrl();
 
   return (
     <div className="flex-1 overflow-y-auto p-6 max-w-6xl mx-auto space-y-6 font-sans select-text">
-      {/* 1. Intestazione Modulo Canale eBay */}
+      {/* 1. Intestazione Canale eBay */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="flex items-center space-x-2">
@@ -133,314 +309,690 @@ export const EbayManager: React.FC = () => {
               <Globe className="w-3 h-3 text-amber-400" />
               <span>Ambiente eBay Sandbox</span>
             </span>
-            <span className="text-xs text-slate-500">FASE 3 • Collegamento Account</span>
+            <span className="text-xs text-slate-500">Integrazione Completa Fasi 3A • 3B • 3C</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-100 mt-1 flex items-center space-x-2.5">
             <span>Canale di Vendita eBay</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Connessione dell'account marketplace tramite autorizzazione protetta OAuth 2.0 (Zero-Trust Desktop).
+            OAuth 2.0 protetto, pubblicazione annunci ricambi, sincronizzazione giacenze magazzino e gestione ordini di vendita.
           </p>
         </div>
 
         <div className="flex items-center space-x-2 self-start md:self-auto">
           <button
             type="button"
-            onClick={() => loadStatus()}
-            disabled={isLoading || isInitiating}
-            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 rounded-lg text-xs font-medium text-slate-200 flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
-            title="Verifica lo stato aggiornato dal backend"
+            onClick={() => {
+              if (activeTab === 'oauth') loadStatus();
+              else if (activeTab === 'listings') loadListingsAndWarehouse();
+              else if (activeTab === 'orders') loadOrders();
+            }}
+            disabled={isLoading || isInitiating || isLoadingListings || isLoadingOrders}
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            title="Aggiorna dati"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
-            <span>Aggiorna Stato</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isLoading || isLoadingListings || isLoadingOrders ? 'animate-spin text-amber-400' : 'text-slate-400'
+              }`}
+            />
+            <span>Ricarica</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Banner Feedback di Azione / Errore */}
-      {actionError && (
-        <div className="bg-red-950/40 border border-red-800/80 rounded-xl p-4 flex items-start space-x-3 text-red-200 text-xs animate-in fade-in duration-200">
-          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-semibold text-red-300">Stato Operazione OAuth:</div>
-            <p className="leading-relaxed text-red-200/90">{actionError}</p>
-          </div>
-        </div>
-      )}
+      {/* Navigatore Schede Fasi (3A, 3B, 3C) */}
+      <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('oauth')}
+          className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'oauth'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+          }`}
+        >
+          <KeyRound className="w-4 h-4" />
+          <span>Fase 3A: Collegamento Account (OAuth)</span>
+          {isConnected && (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          )}
+        </button>
 
+        <button
+          type="button"
+          onClick={() => setActiveTab('listings')}
+          className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'listings'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          <span>Fase 3B: Annunci & Giacenze eBay</span>
+          {listings.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-300 font-mono">
+              {listings.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('orders')}
+          className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'orders'
+              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4" />
+          <span>Fase 3C: Ordini eBay & Evasione</span>
+          {orders.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+              {orders.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Banner Notifiche ed Errori */}
       {actionNotice && (
-        <div className="bg-sky-950/40 border border-sky-800/80 rounded-xl p-4 flex items-start space-x-3 text-sky-200 text-xs animate-in fade-in duration-200">
-          <Info className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-semibold text-sky-300">Notifica di Sistema:</div>
-            <p className="leading-relaxed text-sky-200/90">{actionNotice}</p>
+        <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl text-xs text-blue-200 flex items-start space-x-2.5 animate-in fade-in duration-150">
+          <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+          <div className="flex-1 leading-relaxed">{actionNotice}</div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-200 flex items-start space-x-2.5 animate-in fade-in duration-150">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <div className="flex-1 leading-relaxed">
+            <div className="font-semibold text-red-300">Avviso Operazione</div>
+            <div>{actionError}</div>
           </div>
         </div>
       )}
 
-      {/* 3. Card Principale dello Stato di Connessione */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start space-x-4">
-            <div
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border ${
-                isConnected
-                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-400'
-                  : 'bg-slate-950 border-slate-800 text-slate-400'
-              }`}
-            >
-              {isConnected ? (
-                <CheckCircle2 className="w-7 h-7" />
-              ) : (
-                <Globe className="w-7 h-7 text-amber-400" />
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center space-x-2">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+      {/* ========================================================================= */}
+      {/* SCHEDA 1: FASE 3A - COLLEGAMENTO OAUTH & SICUREZZA ZERO-TRUST             */}
+      {/* ========================================================================= */}
+      {activeTab === 'oauth' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-start space-x-4">
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border ${
                     isConnected
-                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
-                      : 'bg-amber-950/60 text-amber-300 border-amber-800/60'
+                      ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-400'
+                      : connectionInfo?.status === 'backend_not_configured'
+                      ? 'bg-amber-950/40 border-amber-800/50 text-amber-400'
+                      : 'bg-slate-950 border-slate-800 text-slate-500'
                   }`}
                 >
-                  {isConnected ? 'COLLEGATO (SANDBOX)' : 'NON COLLEGATO'}
-                </span>
-                <span className="text-[11px] text-slate-500 font-mono">
-                  Ambiente: <strong className="text-slate-300 font-bold uppercase">Sandbox Test</strong>
-                </span>
+                  {isLoading ? (
+                    <Loader2 className="w-7 h-7 animate-spin text-amber-400" />
+                  ) : isConnected ? (
+                    <CheckCircle2 className="w-7 h-7" />
+                  ) : (
+                    <Globe className="w-7 h-7" />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <h2 className="text-lg font-bold text-slate-100">
+                      {isConnected ? 'Account eBay Sandbox Collegato' : 'Collega Account eBay Sandbox'}
+                    </h2>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        isConnected
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/80'
+                          : 'bg-slate-950 text-slate-400 border border-slate-800'
+                      }`}
+                    >
+                      {isConnected ? 'Attivo & Autorizzato' : 'Disconnesso'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                    {isConnected
+                      ? `L'account eBay Sandbox '${connectionInfo?.ebayUsername || 'Autodemolitore'}' è regolarmente autorizzato con token di sicurezza cifrato AES-256-GCM. Puoi pubblicare inserzioni e ricevere ordini.`
+                      : 'Autorizza Autopia Manager a sincronizzare annunci, giacenze magazzino e ordini con eBay Sandbox tramite il flusso sicuro OAuth 2.0.'}
+                  </p>
+
+                  {isConnected && connectionInfo?.tokenExpiresAt && (
+                    <div className="pt-2 flex items-center space-x-3 text-[11px] text-slate-400">
+                      <span className="flex items-center space-x-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Scadenza Sessione: {new Date(connectionInfo.tokenExpiresAt).toLocaleDateString('it-IT')} {new Date(connectionInfo.tokenExpiresAt).toLocaleTimeString('it-IT')}</span>
+                      </span>
+                      <span className="text-emerald-400 font-semibold">• Token refresh automatico abilitato</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <h2 className="text-lg font-bold text-slate-100">
-                {isConnected
-                  ? `Account eBay: ${connectionInfo?.ebayUsername || 'Sconosciuto'}`
-                  : 'Nessun account eBay Sandbox collegato'}
-              </h2>
-
-              <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-                {isConnected
-                  ? `L'account eBay Sandbox è stato autorizzato con successo per ${activeSeller?.business_name}. Il refresh token è custodito e cifrato sul server sicuro.`
-                  : 'Per sincronizzare i ricambi del magazzino con eBay, collega il tuo account sviluppatore/utente di test tramite la procedura guidata OAuth 2.0.'}
-              </p>
-
-              {connectionInfo?.message && !isConnected && (
-                <div className="text-[11px] text-slate-400 bg-slate-950/80 border border-slate-800/80 rounded px-2.5 py-1.5 font-mono">
-                  Dettaglio backend: <span className="text-slate-300">{connectionInfo.message}</span>
-                </div>
-              )}
+              {/* Pulsanti Azione */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+                {!isConnected ? (
+                  <button
+                    type="button"
+                    onClick={handleConnect}
+                    disabled={isInitiating || isLoading}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors shadow-lg shadow-amber-500/10 flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isInitiating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Generazione State CSRF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Collega Account eBay (Sandbox)</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDisconnect}
+                    disabled={isDisconnecting}
+                    className="px-4 py-2 bg-slate-950 hover:bg-red-950/40 hover:text-red-300 text-slate-400 border border-slate-800 hover:border-red-800/50 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isDisconnecting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Disconnessione...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unplug className="w-3.5 h-3.5" />
+                        <span>Scollega Account</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Azioni di Connessione / Disconnessione */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-            {isConnected ? (
+            {/* Dettagli Tecnico-Architetturali */}
+            <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <div className="flex items-center space-x-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Zero-Trust Architecture: Segreti eBay gestiti esclusivamente su Netlify Functions</span>
+              </div>
               <button
                 type="button"
-                onClick={handleDisconnect}
-                disabled={isDisconnecting}
-                className="px-4 py-2.5 bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-200 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-colors cursor-pointer disabled:opacity-50"
+                onClick={() => setShowArchitectureDetails(!showArchitectureDetails)}
+                className="text-amber-400 hover:underline cursor-pointer"
               >
-                {isDisconnecting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Unplug className="w-4 h-4 text-red-400" />
-                )}
-                <span>Scollega Account eBay</span>
+                {showArchitectureDetails ? 'Nascondi Dettagli' : 'Mostra Configurazione Endpoint'}
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleConnect}
-                disabled={isInitiating || isLoading}
-                className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center space-x-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isInitiating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                    <span>Contatto Backend OAuth...</span>
-                  </>
-                ) : (
-                  <>
-                    <Globe className="w-4 h-4 text-slate-950" />
-                    <span>Collega account eBay (Sandbox)</span>
-                  </>
-                )}
-              </button>
+            </div>
+
+            {showArchitectureDetails && (
+              <div className="mt-4 p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs text-slate-300 animate-in fade-in duration-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                  <div>
+                    <span className="text-slate-500 block">Endpoint Backend:</span>
+                    <code className="text-amber-300 font-mono">{backendUrl}</code>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">RuName eBay:</span>
+                    <code className="text-slate-300 font-mono">Configurato su developer.ebay.com (Sandbox)</code>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Cifratura Token:</span>
+                    <span className="text-emerald-400 font-mono">AES-256-GCM (AuthTag 128-bit)</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Permessi Richiesti:</span>
+                    <span className="text-slate-300 font-mono">sell.inventory, sell.account, sell.fulfillment</span>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
+      )}
 
-        {/* Metadati Connessione Attiva */}
-        {isConnected && connectionInfo && (
-          <div className="mt-6 pt-5 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/60">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Username eBay Sandbox</span>
-              <span className="font-mono text-slate-200 font-semibold text-sm">
-                {connectionInfo.ebayUsername || 'N/D'}
-              </span>
-            </div>
-
-            <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/60">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Data Connessione</span>
-              <span className="text-slate-300 font-medium">
-                {connectionInfo.connectedAt
-                  ? new Date(connectionInfo.connectedAt).toLocaleString('it-IT')
-                  : 'N/D'}
-              </span>
-            </div>
-
-            <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/60">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Permessi Autorizzati</span>
-              <span className="font-mono text-emerald-400 text-[11px]">
-                {connectionInfo.scopes.join(', ') || 'https://api.ebay.com/oauth/api_scope'}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 4. Box Spiegazione del Flusso Zero-Trust Desktop */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <ShieldCheck className="w-5 h-5 text-amber-400" />
-            <h3 className="text-sm font-bold text-slate-100">
-              Architettura di Sicurezza Zero-Trust per l'Applicazione Desktop
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowArchitectureDetails(!showArchitectureDetails)}
-            className="text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
-          >
-            {showArchitectureDetails ? 'Nascondi Dettagli Tecnico-Operativi ▲' : 'Mostra Dettagli Tecnico-Operativi ▼'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
-            <div className="font-semibold text-amber-400 flex items-center space-x-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-              <span>1. Zero Segreti nel Desktop</span>
-            </div>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Il Client Secret (Cert ID) e il RuName risiedono solo nei secret serverless di Netlify. Nessun binario o file locale contiene credenziali private.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
-            <div className="font-semibold text-sky-400 flex items-center space-x-1.5">
-              <Lock className="w-3.5 h-3.5 text-sky-400" />
-              <span>2. Protezione State Anti-CSRF</span>
-            </div>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Il parametro state è generato casualmente sul backend, associato a <code className="text-slate-300 font-mono">{activeSeller?.business_name || 'Demolitore'}</code> con scadenza a 10 minuti ed è rigorosamente monouso.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
-            <div className="font-semibold text-purple-400 flex items-center space-x-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
-              <span>3. Cifratura a Riposo AES-256</span>
-            </div>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              I refresh token scambiati da eBay vengono cifrati con algoritmo AES-256-GCM sul database Supabase e protetti da policy RLS inaccessibili al client.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 space-y-1">
-            <div className="font-semibold text-emerald-400 flex items-center space-x-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>4. Scope Minimo Identità</span>
-            </div>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              In questa fase è richiesto esclusivamente lo scope di base <code className="text-slate-300 font-mono">api_scope</code> per validare la connessione senza permessi di pubblicazione invasivi.
-            </p>
-          </div>
-        </div>
-
-        {/* Dettagli tecnici espandibili */}
-        {showArchitectureDetails && (
-          <div className="mt-4 p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3 text-xs animate-in fade-in duration-150">
-            <div className="font-semibold text-slate-200">Stato di Configurazione Rilevato:</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-[11px] text-slate-400">
-              <div>
-                • Autodemolitore identificato: <span className="text-slate-200">{activeSeller?.business_name}</span> (ID: {activeSeller?.id})
-              </div>
-              <div>
-                • Utente Supabase: <span className="text-slate-200">{user?.email}</span> (Ruolo: {isAdmin ? 'Master Admin' : 'Demolitore'})
-              </div>
-              <div>
-                • Endpoint Backend OAuth: <span className="text-sky-300">{backendUrl}</span>
-              </div>
-              <div>
-                • Ultimo controllo di rete: <span className="text-slate-300">{new Date(connectionInfo?.lastCheckedAt || Date.now()).toLocaleTimeString()}</span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Sezioni Funzionali Future (Disabilitate in modo trasparente fino a completamento OAuth) */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center space-x-2">
-          <Layers className="w-4 h-4 text-slate-500" />
-          <h3 className="text-sm font-semibold text-slate-400">
-            Funzionalità Marketplace eBay (Pianificate per le Fasi 3B & 3C)
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-900/60 border border-slate-800/60 rounded-xl p-5 space-y-2 opacity-65">
+      {/* ========================================================================= */}
+      {/* SCHEDA 2: FASE 3B - ANNUNCI & GIACENZE EBAY (Sell Inventory API)          */}
+      {/* ========================================================================= */}
+      {activeTab === 'listings' && (
+        <div className="space-y-6">
+          {/* Sezione Pubblicazione Rapida dal Magazzino */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Fase 3B
-              </span>
-              <Store className="w-4 h-4 text-slate-600" />
+              <div className="flex items-center space-x-2">
+                <Package className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h2 className="text-base font-bold text-slate-100">
+                    Pubblica Ricambio da Magazzino su eBay Sandbox
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Seleziona un articolo dalla tua disponibilità reale in magazzino per generare l'annuncio con offerta a prezzo fisso.
+                  </p>
+                </div>
+              </div>
+
+              {selectedInventoryItem && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedInventoryItem(null)}
+                  className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                >
+                  Annulla selezione
+                </button>
+              )}
             </div>
-            <div className="text-sm font-bold text-slate-300">Pubblicazione Annunci Ricambi</div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Invio automatico delle schede ricambio con foto, codici OEM e compatibilità veicoli sul marketplace eBay.
-            </p>
-            <div className="pt-2 text-[11px] text-amber-500/80 font-mono">
-              In attesa del completamento OAuth
-            </div>
+
+            {/* Form di pubblicazione se un articolo è selezionato */}
+            {selectedInventoryItem ? (
+              <form onSubmit={handlePublish} className="bg-slate-950 p-4 rounded-xl border border-amber-500/30 space-y-4">
+                <div className="text-xs font-semibold text-amber-400 flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Configurazione Inserzione per: {selectedInventoryItem.title}</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 block mb-1">Titolo Annuncio eBay (max 80 car.):</label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={publishForm.title}
+                      onChange={(e) => setPublishForm({ ...publishForm, title: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-amber-400"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Prezzo di Vendita (€):</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      value={publishForm.price}
+                      onChange={(e) => setPublishForm({ ...publishForm, price: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-amber-400"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 block mb-1">Quantità Disponibile:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={publishForm.quantity}
+                      onChange={(e) => setPublishForm({ ...publishForm, quantity: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-100 focus:outline-none focus:border-amber-400"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                  <div className="text-[11px] text-slate-400">
+                    Codice OEM: <span className="text-slate-200 font-mono">{selectedInventoryItem.oem_code || 'Non specificato'}</span> • SKU Generato: <span className="text-amber-400 font-mono">{publishForm.sku}</span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isPublishing}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors shadow flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Pubblicazione su eBay Sandbox...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Conferma e Pubblica Annuncio</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs text-slate-400">
+                  Ricambi disponibili a magazzino ({warehouseItems.length}):
+                </div>
+                {warehouseItems.length === 0 ? (
+                  <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-center text-xs text-slate-500">
+                    Nessun ricambio trovato in magazzino. Aggiungi ricambi nella sezione "Magazzino & Ricambi" per poterli pubblicare su eBay.
+                  </div>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800/80">
+                    {warehouseItems.slice(0, 8).map((item) => (
+                      <div key={item.id} className="p-3 bg-slate-950/60 hover:bg-slate-950 flex items-center justify-between text-xs transition-colors">
+                        <div>
+                          <div className="font-semibold text-slate-200">{item.title}</div>
+                          <div className="text-[11px] text-slate-400 flex items-center space-x-3 mt-0.5">
+                            <span>Prezzo: <strong className="text-emerald-400">€{item.price?.toFixed(2) || '0.00'}</strong></span>
+                            <span>Giacenza: <strong className="text-amber-400">{item.quantity} pz</strong></span>
+                            {item.oem_code && <span>OEM: <code className="text-slate-300 font-mono">{item.oem_code}</code></span>}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedInventoryItem(item);
+                            setPublishForm({
+                              title: item.title,
+                              price: item.price ? item.price.toString() : '25.00',
+                              quantity: item.quantity ? item.quantity.toString() : '1',
+                              sku: `AUT-${item.id.slice(0, 8).toUpperCase()}`,
+                            });
+                          }}
+                          className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Prepara Annuncio</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="bg-slate-900/60 border border-slate-800/60 rounded-xl p-5 space-y-2 opacity-65">
+          {/* Elenco Inserzioni Pubblicate su eBay */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Fase 3B
+              <div className="flex items-center space-x-2">
+                <Store className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-slate-100">
+                  Inserzioni eBay Attive & Sincronizzazione Giacenze
+                </h2>
+              </div>
+              <span className="text-xs text-slate-400 font-mono">
+                {listings.length} Inserzioni registrate
               </span>
-              <RefreshCw className="w-4 h-4 text-slate-600" />
             </div>
-            <div className="text-sm font-bold text-slate-300">Sincronizzazione Giacenze Magazzino</div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Lo scarico di un ricambio al banco in Autopia Manager decrementerà istantaneamente la quantità su eBay.
-            </p>
-            <div className="pt-2 text-[11px] text-amber-500/80 font-mono">
-              In attesa del completamento OAuth
-            </div>
-          </div>
 
-          <div className="bg-slate-900/60 border border-slate-800/60 rounded-xl p-5 space-y-2 opacity-65">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Fase 3C
-              </span>
-              <Clock className="w-4 h-4 text-slate-600" />
-            </div>
-            <div className="text-sm font-bold text-slate-300">Ordini & Notifiche di Vendita</div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Ricezione degli ordini eBay direttamente nel gestionale desktop con avviso acustico e bolla di spedizione.
-            </p>
-            <div className="pt-2 text-[11px] text-amber-500/80 font-mono">
-              In attesa del completamento OAuth
-            </div>
+            {listings.length === 0 ? (
+              <div className="p-8 text-center bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <Store className="w-8 h-8 mx-auto text-slate-600" />
+                <div className="text-xs text-slate-400">
+                  Nessun annuncio pubblicato su eBay per questo account demolitore.
+                </div>
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  Usa il riquadro sopra per selezionare un ricambio dal magazzino Autopia e pubblicarlo sul marketplace eBay Sandbox.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-2.5 px-3">SKU / Item ID</th>
+                      <th className="py-2.5 px-3">Titolo Inserzione</th>
+                      <th className="py-2.5 px-3">Prezzo</th>
+                      <th className="py-2.5 px-3">Giacenza eBay</th>
+                      <th className="py-2.5 px-3">Stato</th>
+                      <th className="py-2.5 px-3 text-right">Azione Rapida</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                    {listings.map((l) => (
+                      <tr key={l.id} className="hover:bg-slate-950/40 transition-colors">
+                        <td className="py-3 px-3 font-mono font-semibold text-amber-400">
+                          <div>{l.sku}</div>
+                          {l.ebay_item_id && (
+                            <div className="text-[10px] text-slate-500">ID: {l.ebay_item_id}</div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-200 max-w-xs truncate">
+                          {l.title}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-emerald-400">
+                          €{l.price.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`font-mono font-bold ${l.quantity > 0 ? 'text-slate-200' : 'text-red-400'}`}>
+                            {l.quantity} pz
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                              l.status === 'published'
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/80'
+                                : l.status === 'out_of_stock'
+                                ? 'bg-red-950 text-red-300 border border-red-800/80'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {l.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSyncQuantity(l, l.quantity + 1)}
+                              disabled={updatingSku === l.sku}
+                              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                              title="Aumenta di 1 pezzo"
+                            >
+                              +1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSyncQuantity(l, Math.max(0, l.quantity - 1))}
+                              disabled={updatingSku === l.sku}
+                              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                              title="Diminuisci di 1 pezzo"
+                            >
+                              -1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSyncQuantity(l, 0)}
+                              disabled={updatingSku === l.sku}
+                              className="px-2 py-1 bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-800/60 rounded text-[11px] font-medium transition-colors cursor-pointer"
+                              title="Azzera giacenza su eBay"
+                            >
+                              Scarica
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SCHEDA 3: FASE 3C - ORDINI EBAY & EVASIONE (Sell Fulfillment API)        */}
+      {/* ========================================================================= */}
+      {activeTab === 'orders' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-100 flex items-center space-x-2">
+                  <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                  <span>Ricezione Ordini eBay Sandbox & Scarico Magazzino</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Scarica gli ordini confermati su eBay Sandbox. Lo scarico scala automaticamente la disponibilità in magazzino per prevenire doppie vendite.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSyncOrders}
+                disabled={isSyncingOrders}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors shadow flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isSyncingOrders ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Download Ordini da eBay...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Sincronizza Ordini eBay Sandbox</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {orders.length === 0 ? (
+              <div className="p-8 text-center bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <ShoppingBag className="w-8 h-8 mx-auto text-slate-600" />
+                <div className="text-xs text-slate-400">
+                  Nessun ordine eBay registrato localmente.
+                </div>
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  Clicca su "Sincronizza Ordini eBay Sandbox" per interrogare l'API Fulfillment di eBay e importare le vendite effettuate con il tuo account di test.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order) => {
+                  const form = trackingForms[order.id] || { tracking: '', carrier: 'BRT Corriere Espresso' };
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="p-5 bg-slate-950 rounded-xl border border-slate-800 space-y-3"
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 border-b border-slate-800">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono font-bold text-amber-400 text-xs">
+                            Ordine #{order.ebay_order_id}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              order.order_status === 'SHIPPED'
+                                ? 'bg-purple-950 text-purple-300 border border-purple-800/80'
+                                : 'bg-emerald-950 text-emerald-300 border border-emerald-800/80'
+                            }`}
+                          >
+                            {order.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato • Da Spedire'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-slate-400">
+                          Data: <span className="text-slate-200">{new Date(order.creation_date).toLocaleDateString('it-IT')}</span> • Totale: <strong className="text-emerald-400 font-mono text-sm">€{order.total_price.toFixed(2)} {order.currency}</strong>
+                        </div>
+                      </div>
+
+                      {/* Dettagli Acquirente e Spedizione */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300">
+                        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/60 space-y-1">
+                          <div className="text-slate-400 text-[11px] font-semibold flex items-center space-x-1">
+                            <Truck className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Indirizzo di Spedizione:</span>
+                          </div>
+                          <div className="font-bold text-slate-100">{order.buyer_name} ({order.buyer_username})</div>
+                          <div className="text-slate-400 text-[11px]">
+                            {order.shipping_address?.addressLine1 || 'Indirizzo registrato su eBay'}, {order.shipping_address?.postalCode} {order.shipping_address?.city} ({order.shipping_address?.countryCode || 'IT'})
+                          </div>
+                        </div>
+
+                        {/* Articoli nel Carrello */}
+                        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/60 space-y-1">
+                          <div className="text-slate-400 text-[11px] font-semibold">Articoli Venduti:</div>
+                          <div className="divide-y divide-slate-800">
+                            {order.line_items?.map((item, idx) => (
+                              <div key={idx} className="py-1 flex items-center justify-between text-[11px]">
+                                <span className="text-slate-200 font-medium truncate max-w-xs">{item.title}</span>
+                                <span className="font-mono text-amber-400">{item.quantity} pz • €{item.lineItemCost}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Modulo Evasione con Tracking */}
+                      {order.order_status !== 'SHIPPED' ? (
+                        <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 flex flex-col sm:flex-row items-center gap-3">
+                          <div className="text-xs text-amber-300 font-semibold shrink-0">
+                            Evasione Spedizione eBay:
+                          </div>
+
+                          <select
+                            value={form.carrier}
+                            onChange={(e) =>
+                              setTrackingForms({
+                                ...trackingForms,
+                                [order.id]: { ...form, carrier: e.target.value },
+                              })
+                            }
+                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                          >
+                            <option value="BRT Corriere Espresso">BRT Corriere Espresso</option>
+                            <option value="GLS Italy">GLS Italy</option>
+                            <option value="DHL Express">DHL Express</option>
+                            <option value="Poste Italiane">Poste Italiane</option>
+                            <option value="SDA Express Courier">SDA Express Courier</option>
+                          </select>
+
+                          <input
+                            type="text"
+                            placeholder="Inserisci Tracking Number..."
+                            value={form.tracking}
+                            onChange={(e) =>
+                              setTrackingForms({
+                                ...trackingForms,
+                                [order.id]: { ...form, tracking: e.target.value },
+                              })
+                            }
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleFulfillOrder(order.id, order.ebay_order_id)}
+                            disabled={fulfillingOrderId === order.id}
+                            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-colors shrink-0 flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                          >
+                            {fulfillingOrderId === order.id ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Invio...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Invia Tracking</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 text-xs text-slate-400 flex items-center space-x-2">
+                          <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
+                          <span>Spedizione completata con <strong>{order.carrier_code || 'Corriere'}</strong> • Tracking: <code className="text-purple-300 font-mono">{order.tracking_number}</code></span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

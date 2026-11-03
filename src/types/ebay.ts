@@ -28,3 +28,51 @@ export interface EbayOAuthInitResult {
   error?: string;
   isBackendMissing?: boolean;
 }
+
+export interface EbayListingItem {
+  id: string;
+  seller_id: string;
+  inventory_id: string | null;
+  sku: string;
+  ebay_item_id: string | null;
+  ebay_offer_id: string | null;
+  title: string;
+  price: number;
+  quantity: number;
+  status: 'published' | 'draft' | 'out_of_stock' | 'ended';
+  last_synced_at: string;
+  created_at: string;
+}
+
+export interface EbayOrderLineItem {
+  lineItemId: string;
+  sku: string;
+  title: string;
+  quantity: number;
+  lineItemCost: string;
+}
+
+export interface EbayOrder {
+  id: string;
+  seller_id: string;
+  ebay_order_id: string;
+  buyer_username: string;
+  buyer_name: string;
+  shipping_address: {
+    fullName?: string;
+    addressLine1?: string;
+    city?: string;
+    postalCode?: string;
+    countryCode?: string;
+  };
+  total_price: number;
+  currency: string;
+  order_status: 'PAID' | 'SHIPPED' | 'CANCELLED';
+  line_items: EbayOrderLineItem[];
+  tracking_number?: string | null;
+  carrier_code?: string | null;
+  shipped_at?: string | null;
+  creation_date: string;
+  synced_at: string;
+}
+

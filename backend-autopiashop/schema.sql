@@ -68,5 +68,63 @@ ALTER TABLE public.seller_ebay_tokens ENABLE ROW LEVEL SECURITY;
 
 -- Nessuna policy per anon o authenticated:
 -- Né il client desktop, né altri venditori possono eseguire SELECT o accedere ai token.
--- Solo il backend Netlify (usando SUPABASE_SERVICE_ROLE_KEY) ha accesso.
 COMMENT ON TABLE public.seller_ebay_tokens IS 'Credenziali e token eBay cifrati AES-256-GCM associati strettamente all autodemolitore';
+
+
+-- 3. Tabella per le Inserzioni eBay (Fase 3B: Pubblicazione e Sincronizzazione Giacenze)
+CREATE TABLE IF NOT EXISTS public.ebay_listings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id UUID NOT NULL REFERENCES public.seller_profiles(id) ON DELETE CASCADE,
+  inventory_id UUID REFERENCES public.inventories(id) ON DELETE SET NULL,
+  sku VARCHAR(100) NOT NULL,
+  ebay_item_id VARCHAR(100),
+  ebay_offer_id VARCHAR(100),
+  title VARCHAR(255) NOT NULL,
+  price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  status VARCHAR(30) NOT NULL DEFAULT 'published', -- 'published', 'draft', 'out_of_stock', 'ended'
+  last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT uq_ebay_listings_seller_sku UNIQUE (seller_id, sku)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ebay_listings_seller_sku 
+  ON public.ebay_listings(seller_id, sku);
+
+CREATE INDEX IF NOT EXISTS idx_ebay_listings_inventory 
+  ON public.ebay_listings(inventory_id);
+
+ALTER TABLE public.ebay_listings ENABLE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.ebay_listings IS 'Inserzioni eBay collegate ai ricambi del magazzino Autopia (Fase 3B)';
+
+
+-- 4. Tabella per gli Ordini di Vendita eBay (Fase 3C: Fulfillment e Scarico Magazzino)
+CREATE TABLE IF NOT EXISTS public.ebay_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id UUID NOT NULL REFERENCES public.seller_profiles(id) ON DELETE CASCADE,
+  ebay_order_id VARCHAR(100) NOT NULL,
+  buyer_username VARCHAR(100),
+  buyer_name VARCHAR(255),
+  shipping_address JSONB NOT NULL DEFAULT '{}'::jsonb,
+  total_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+  currency VARCHAR(10) NOT NULL DEFAULT 'EUR',
+  order_status VARCHAR(50) NOT NULL DEFAULT 'PAID', -- 'PAID', 'SHIPPED', 'CANCELLED'
+  line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tracking_number VARCHAR(100),
+  carrier_code VARCHAR(100),
+  shipped_at TIMESTAMPTZ,
+  creation_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT uq_ebay_orders_seller_order UNIQUE (seller_id, ebay_order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ebay_orders_seller_order 
+  ON public.ebay_orders(seller_id, ebay_order_id);
+
+ALTER TABLE public.ebay_orders ENABLE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.ebay_orders IS 'Ordini ricevuti dal marketplace eBay e sincronizzati nel gestionale (Fase 3C)';
+

@@ -1,5 +1,10 @@
 import { getSupabaseClient } from './supabaseClient';
-import type { EbayConnectionInfo, EbayOAuthInitResult } from '../types/ebay';
+import type {
+  EbayConnectionInfo,
+  EbayOAuthInitResult,
+  EbayListingItem,
+  EbayOrder,
+} from '../types/ebay';
 
 export const DEFAULT_EBAY_OAUTH_BACKEND_URL = 'https://autopiashop.it/.netlify/functions';
 
@@ -288,3 +293,280 @@ export async function disconnectEbayAccount(): Promise<{ success: boolean; error
     return { success: false, error: `Impossibile completare la disconnessione: ${errorMsg}` };
   }
 }
+
+/**
+ * Recupera l'elenco delle inserzioni eBay pubblicate o sincronizzate per il venditore (Fase 3B).
+ */
+export async function fetchEbayListings(): Promise<{ data: EbayListingItem[]; error: string | null }> {
+  const client = getSupabaseClient();
+  if (!client) return { data: [], error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { data: [], error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-inventory-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (res.status === 404) {
+      return { data: [], error: 'Funzione eBay Inventory Sync non ancora distribuita sul backend Netlify.' };
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { data: [], error: err?.error || `Errore HTTP ${res.status}` };
+    }
+
+    const json = await res.json();
+    return { data: json.listings || [], error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di connessione';
+    return { data: [], error: msg };
+  }
+}
+
+/**
+ * Pubblica un ricambio del magazzino Autopia su eBay Sandbox come annuncio a prezzo fisso (Fase 3B).
+ */
+export async function publishPartToEbay(payload: {
+  inventory_id?: string;
+  sku?: string;
+  title: string;
+  description?: string;
+  price: number;
+  quantity: number;
+  condition?: string;
+  oem_code?: string;
+  brand?: string;
+  images?: string[];
+}): Promise<{ success: boolean; listing?: EbayListingItem; message?: string; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { success: false, error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-inventory-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'publish_item',
+        ...payload,
+      }),
+    });
+
+    if (res.status === 404) {
+      return { success: false, error: 'Funzione eBay Inventory Sync non ancora distribuita sul backend Netlify.' };
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return { success: false, error: data?.error || `Errore HTTP ${res.status}: ${res.statusText}` };
+    }
+
+    return {
+      success: true,
+      listing: data.listing,
+      message: data.message || 'Annuncio pubblicato con successo su eBay Sandbox!',
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di connessione';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Sincronizza istantaneamente la giacenza di uno SKU su eBay Sandbox (Fase 3B).
+ */
+export async function syncEbayInventoryQuantity(
+  sku: string,
+  quantity: number,
+  inventoryId?: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { success: false, error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-inventory-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'sync_quantity',
+        sku,
+        quantity,
+        inventory_id: inventoryId,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return { success: false, error: data?.error || `Errore HTTP ${res.status}` };
+    }
+
+    return { success: true, message: data.message };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di connessione';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Recupera gli ordini memorizzati localmente nel database (Fase 3C).
+ */
+export async function fetchLocalEbayOrders(): Promise<{ data: EbayOrder[]; error: string | null }> {
+  const client = getSupabaseClient();
+  if (!client) return { data: [], error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { data: [], error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-orders-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (res.status === 404) {
+      return { data: [], error: 'Funzione eBay Orders Sync non ancora distribuita sul backend Netlify.' };
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return { data: [], error: err?.error || `Errore HTTP ${res.status}` };
+    }
+
+    const json = await res.json();
+    return { data: json.orders || [], error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di connessione';
+    return { data: [], error: msg };
+  }
+}
+
+/**
+ * Scarica i nuovi ordini direttamente da eBay Fulfillment API e scala le giacenze di magazzino (Fase 3C).
+ */
+export async function syncOrdersFromEbay(): Promise<{
+  success: boolean;
+  orders: EbayOrder[];
+  message?: string;
+  error?: string;
+}> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, orders: [], error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { success: false, orders: [], error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-orders-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'fetch_ebay_orders',
+      }),
+    });
+
+    if (res.status === 404) {
+      return {
+        success: false,
+        orders: [],
+        error: 'Funzione eBay Orders Sync non ancora distribuita sul backend Netlify.',
+      };
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return { success: false, orders: [], error: data?.error || `Errore HTTP ${res.status}` };
+    }
+
+    return {
+      success: true,
+      orders: data.orders || [],
+      message: data.message || 'Ordini eBay sincronizzati con successo!',
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di rete';
+    return { success: false, orders: [], error: msg };
+  }
+}
+
+/**
+ * Invia il codice tracking di spedizione a eBay Fulfillment API (Fase 3C).
+ */
+export async function fulfillEbayOrder(
+  ebayOrderId: string,
+  trackingNumber: string,
+  carrierCode?: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Client Supabase non inizializzato' };
+
+  const { data: sessionData } = await client.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { success: false, error: 'Sessione utente assente' };
+
+  const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-orders-sync`;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'fulfill_order',
+        ebay_order_id: ebayOrderId,
+        tracking_number: trackingNumber,
+        carrier_code: carrierCode || 'Corriere Espresso',
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success) {
+      return { success: false, error: data?.error || `Errore HTTP ${res.status}` };
+    }
+
+    return {
+      success: true,
+      message: data.message || 'Tracking inviato a eBay e ordine contrassegnato come spedito!',
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore di connessione';
+    return { success: false, error: msg };
+  }
+}
+

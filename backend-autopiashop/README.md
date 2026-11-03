@@ -12,18 +12,20 @@ Questo pacchetto contiene l'implementazione completa e blindata del backend serv
 
 ## 1. Struttura dei File da Trasferire
 
-Copia i seguenti 5 file nella cartella `netlify/functions/` del repository del sito web `autopiashop.it`:
+Copia i seguenti 7 file nella cartella `netlify/functions/` del repository del sito web `autopiashop.it`:
 
 ```text
 autopiashop/ (repository sito web collegato a Netlify)
 └── netlify/
     └── functions/
         ├── send-email.mts                 (Esistente nel sito - NON MODIFICARE)
-        ├── ebay-shared.mts                (Modulo condiviso: cifratura AES-256-GCM, autenticazione e CORS)
-        ├── ebay-oauth-init.mts            (Generazione state CSRF monouso e URL autorizzazione eBay)
+        ├── ebay-shared.mts                (Modulo condiviso: cifratura AES-256-GCM, auto-refresh token, autenticazione e CORS)
+        ├── ebay-oauth-init.mts            (Generazione state CSRF monouso e URL autorizzazione con scope Sell e Fulfillment)
         ├── ebay-oauth-callback.mts        (Callback OAuth, token exchange HTTP Basic e salvataggio DB)
-        ├── ebay-oauth-status.mts          (Endpoint interrogato dal desktop per verificare lo stato)
-        └── ebay-oauth-disconnect.mts      (Disconnessione locale e azzeramento token)
+        ├── ebay-oauth-status.mts          (Endpoint interrogato dal desktop per verificare lo stato di connessione)
+        ├── ebay-oauth-disconnect.mts      (Disconnessione locale e azzeramento token)
+        ├── ebay-inventory-sync.mts        (FASE 3B: Pubblicazione annunci ricambi e sincronizzazione giacenze)
+        └── ebay-orders-sync.mts           (FASE 3C: Ricezione ordini eBay, scarico automatico magazzino e tracking)
 ```
 
 ---
