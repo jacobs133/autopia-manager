@@ -548,11 +548,11 @@ export const BackendSettings: React.FC = () => {
             <div className="text-[11px] font-bold text-slate-200 flex items-center space-x-1.5">
               <span>Canale di Distribuzione</span>
             </div>
-            <div className="font-mono text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 break-all">
-              https://github.com/autopia-shop/autopia-manager/releases/latest/download/latest.json
+            <div className="font-mono text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 break-all select-all">
+              https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Le nuove release Windows vengono firmate crittograficamente con chiave privata ECDSA (`minisign`/Tauri signer) prima di essere pubblicate su GitHub Releases.
+              Le nuove release Windows vengono firmate crittograficamente con chiave privata Minisign (Ed25519) prima di essere pubblicate su GitHub Releases.
             </p>
           </div>
 
@@ -573,10 +573,20 @@ export const BackendSettings: React.FC = () => {
                     </div>
                   )}
                 </div>
+              ) : progress.status === 'ERROR' ? (
+                <div className="bg-red-950/50 border border-red-800/70 text-red-300 p-2.5 rounded text-[11px] space-y-1">
+                  <div className="font-bold flex items-center space-x-1.5 text-red-400">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Nessuna release trovata o errore di controllo</span>
+                  </div>
+                  <div className="text-[10px] text-slate-300 leading-relaxed">
+                    {progress.errorMessage || 'Verifica che la Release sia stata pubblicata su GitHub e che il repository sia accessibile.'}
+                  </div>
+                </div>
               ) : (
                 <div className="bg-slate-900 border border-slate-800 text-slate-400 p-2.5 rounded text-[11px] flex items-center space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Autopia Manager è aggiornato alla versione più recente (v{currentVersion}).</span>
+                  <span>Autopia Manager è aggiornato alla versione locale (v{currentVersion}).</span>
                 </div>
               )}
             </div>
