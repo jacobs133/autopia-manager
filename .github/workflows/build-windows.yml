@@ -36,6 +36,18 @@ jobs:
           npm install -g npm@latest
           npm install
 
+      - name: 4.1 Verifica presenza chiave di firma per updater
+        id: check-signing
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "Chiave privata di firma TAURI_SIGNING_PRIVATE_KEY non impostata nei Secrets di GitHub. Gli installer Windows (.exe e .msi) verranno generati regolarmente saltando la firma dell'updater (--no-sign)."
+            echo "SIGN_ARGS=--no-sign" >> $GITHUB_ENV
+          else
+            echo "Chiave privata di firma TAURI_SIGNING_PRIVATE_KEY rilevata. Verranno generati anche gli artefatti firmati per l'updater automatico."
+            echo "SIGN_ARGS=" >> $GITHUB_ENV
+          fi
+
       - name: 5. Compilazione del frontend e dell'applicazione Tauri (Installer Windows)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -50,7 +62,7 @@ jobs:
           releaseBody: "Release ufficiale per Windows (Autopia Manager - Gestionale Autodemolizioni)"
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ env.SIGN_ARGS }}
 
       - name: 6. Caricamento degli installer generati (MSI ed EXE per Windows)
         uses: actions/upload-artifact@v4

@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "RWTlFmBbSjQ6cVxP5Sx3bbAfViIPXDn7CMU5adCkXk571AYeMV3P2z1D",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1MTY2MDVCNEEzNDNBNzEKUldUbEZtQmJTalE2Y1Z4UDVTeDNiYkFmVmlJUFhEbjdDTVU1YWRDa1hrNTcxQVllTVYzUDJ6MUQK",
       "endpoints": [
         "https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json"
       ]
