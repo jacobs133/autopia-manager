@@ -24,7 +24,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   statusMessage = 'Backend Autopia non collegato',
   sellerBusinessName,
 }) => {
-  const { currentVersion, updateAvailable, updateInfo, progress, startInstall, relaunch } = useUpdate();
+  const { currentVersion, updateAvailable, updateInfo, progress, startInstall, relaunch, openUpdateModal } = useUpdate();
   const [time, setTime] = useState<string>('');
   const [isTauri, setIsTauri] = useState(false);
 
@@ -127,7 +127,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
         <div className="h-3 w-px bg-slate-800" />
 
-        <span className="text-slate-500 font-mono text-[10px]">v{currentVersion}</span>
+        <button
+          type="button"
+          onClick={openUpdateModal}
+          className="text-slate-400 hover:text-amber-400 font-mono text-[10px] cursor-pointer transition-colors px-1 py-0.5 rounded hover:bg-slate-900"
+          title="Gestione Aggiornamenti Software"
+        >
+          v{currentVersion}
+        </button>
 
         <div className="h-3 w-px bg-slate-800" />
 

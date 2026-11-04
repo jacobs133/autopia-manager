@@ -12,13 +12,14 @@ Questo pacchetto contiene l'implementazione completa e blindata del backend serv
 
 ## 1. Struttura dei File da Trasferire
 
-Copia i seguenti 7 file nella cartella `netlify/functions/` del repository del sito web `autopiashop.it`:
+Copia i seguenti 8 file nella cartella `netlify/functions/` del repository del sito web `autopiashop.it`:
 
 ```text
 autopiashop/ (repository sito web collegato a Netlify)
 └── netlify/
     └── functions/
         ├── send-email.mts                 (Esistente nel sito - NON MODIFICARE)
+        ├── app-version.mts                (Endpoint pubblico controllo aggiornamenti Autopia Manager)
         ├── ebay-shared.mts                (Modulo condiviso: cifratura AES-256-GCM, auto-refresh token, autenticazione e CORS)
         ├── ebay-oauth-init.mts            (Generazione state CSRF monouso e URL autorizzazione con scope Sell e Fulfillment)
         ├── ebay-oauth-callback.mts        (Callback OAuth, token exchange HTTP Basic e salvataggio DB)

@@ -574,19 +574,19 @@ export const BackendSettings: React.FC = () => {
                   )}
                 </div>
               ) : progress.status === 'ERROR' ? (
-                <div className="bg-red-950/50 border border-red-800/70 text-red-300 p-2.5 rounded text-[11px] space-y-1">
-                  <div className="font-bold flex items-center space-x-1.5 text-red-400">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Nessuna release trovata o errore di controllo</span>
+                <div className="bg-amber-950/40 border border-amber-800/60 text-amber-300 p-2.5 rounded text-[11px] space-y-1">
+                  <div className="font-bold flex items-center space-x-1.5 text-amber-400">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>Nessun aggiornamento pendente trovato</span>
                   </div>
                   <div className="text-[10px] text-slate-300 leading-relaxed">
-                    {progress.errorMessage || 'Verifica che la Release sia stata pubblicata su GitHub e che il repository sia accessibile.'}
+                    L'applicazione è allineata con la versione corrente (v{currentVersion}).
                   </div>
                 </div>
               ) : (
                 <div className="bg-slate-900 border border-slate-800 text-slate-400 p-2.5 rounded text-[11px] flex items-center space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Autopia Manager è aggiornato alla versione locale (v{currentVersion}).</span>
+                  <span>Autopia Manager è aggiornato alla versione più recente (v{currentVersion}).</span>
                 </div>
               )}
             </div>

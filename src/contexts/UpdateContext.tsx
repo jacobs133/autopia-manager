@@ -18,7 +18,11 @@ export interface UpdateContextType {
   updateInfo: AppUpdateInfo | null;
   progress: UpdateProgress;
   isDismissed: boolean;
+  isModalOpen: boolean;
   isTauri: boolean;
+  lastCheckSummary: string | null;
+  openUpdateModal: () => void;
+  closeUpdateModal: () => void;
   checkForUpdates: (manual?: boolean) => Promise<void>;
   startInstall: () => Promise<void>;
   relaunch: () => Promise<void>;
@@ -34,6 +38,8 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [lastCheckSummary, setLastCheckSummary] = useState<string | null>(null);
   const isTauri = isTauriEnvironment();
 
   useEffect(() => {
@@ -49,8 +55,22 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     totalBytes: 0,
   });
 
+  const openUpdateModal = useCallback(() => {
+    setIsModalOpen(true);
+    setIsDismissed(false);
+  }, []);
+
+  const closeUpdateModal = useCallback(() => {
+    setIsModalOpen(false);
+    setIsDismissed(true);
+  }, []);
+
   const checkForUpdates = useCallback(async (manual: boolean = false) => {
     setIsChecking(true);
+    if (manual) {
+      setIsModalOpen(true);
+      setIsDismissed(false);
+    }
     setProgress((p) => ({ ...p, status: 'CHECKING', errorMessage: undefined }));
 
     try {
@@ -60,10 +80,16 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setUpdateAvailable(true);
         setUpdateInfo(res.updateInfo);
         setIsDismissed(false);
+        setIsModalOpen(true);
+        setLastCheckSummary(`Nuova versione v${res.updateInfo.version} disponibile!`);
         setProgress((p) => ({ ...p, status: 'AVAILABLE' }));
       } else {
         setUpdateAvailable(false);
         setUpdateInfo(null);
+        const summary = res.error
+          ? `Verifica completata: ${res.error}`
+          : `Autopia Manager è aggiornato alla versione più recente (v${currentVersion}).`;
+        setLastCheckSummary(summary);
         setProgress((p) => ({
           ...p,
           status: res.error ? 'ERROR' : 'UP_TO_DATE',
@@ -71,21 +97,20 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Errore imprevisto durante il controllo aggiornamenti';
+      const msg = err instanceof Error ? err.message : 'Errore imprevisto durante il controllo';
+      setLastCheckSummary(msg);
       setProgress((p) => ({ ...p, status: 'ERROR', errorMessage: msg }));
     } finally {
       setIsChecking(false);
     }
-  }, []);
+  }, [currentVersion]);
 
   // Controllo automatico silenzioso all'avvio dell'applicazione
   useEffect(() => {
-    // Breve ritardo all'avvio per non rallentare l'inizializzazione del database e dell'autenticazione
     const timer = setTimeout(() => {
       checkForUpdates(false);
     }, 4000);
 
-    // Controllo periodico ogni 4 ore
     const interval = setInterval(() => {
       checkForUpdates(false);
     }, 4 * 60 * 60 * 1000);
@@ -125,6 +150,7 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const postponeUpdate = useCallback(() => {
     setIsDismissed(true);
+    setIsModalOpen(false);
   }, []);
 
   const resetUpdateState = useCallback(() => {
@@ -134,6 +160,7 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       downloadedBytes: 0,
       totalBytes: 0,
     });
+    setLastCheckSummary(null);
   }, []);
 
   return (
@@ -145,7 +172,11 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateInfo,
         progress,
         isDismissed,
+        isModalOpen,
         isTauri,
+        lastCheckSummary,
+        openUpdateModal,
+        closeUpdateModal,
         checkForUpdates,
         startInstall,
         relaunch,

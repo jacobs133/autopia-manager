@@ -12,11 +12,13 @@ import {
   Building2,
   ExternalLink,
   Globe,
+  Sparkles,
 } from 'lucide-react';
 import { TitleBar } from './TitleBar';
 import { StatusBar } from './StatusBar';
 import { UpdateNotificationModal } from '../updater/UpdateNotificationModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUpdate } from '../../contexts/UpdateContext';
 
 export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'listings' | 'import' | 'ebay' | 'settings' | 'admin';
 
@@ -42,6 +44,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     availableSellers,
     logout,
   } = useAuth();
+  const { currentVersion, updateAvailable, openUpdateModal } = useUpdate();
 
   const getSectionTitle = (sec: DesktopSection) => {
     switch (sec) {
@@ -277,6 +280,28 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                   )}
                 </div>
 
+                {/* Controllo Aggiornamenti Software - Accessibile a TUTTI gli utenti */}
+                <button
+                  type="button"
+                  onClick={openUpdateModal}
+                  className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-xs flex items-center justify-between transition-colors cursor-pointer"
+                  title="Verifica se sono disponibili nuove versioni"
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Aggiornamenti App</span>
+                  </div>
+                  {updateAvailable ? (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 animate-pulse">
+                      Nuova v!
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[10px] text-slate-500 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
+                      v{currentVersion}
+                    </span>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={logout}
@@ -304,6 +329,21 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                   <ShieldAlert className="w-3 h-3 text-amber-400 shrink-0" />
                   <span>Accesso riservato agli autodemolitori accreditati.</span>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={openUpdateModal}
+                  className="w-full mt-2 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-[11px] flex items-center justify-between transition-colors cursor-pointer"
+                  title="Verifica aggiornamenti"
+                >
+                  <span className="flex items-center space-x-1.5">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Aggiornamenti</span>
+                  </span>
+                  <span className="font-mono text-[9px] text-slate-500 bg-slate-950 px-1 py-0.2 rounded border border-slate-800">
+                    v{currentVersion}
+                  </span>
+                </button>
               </div>
             )}
           </div>

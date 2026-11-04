@@ -40,7 +40,7 @@ export function isTauriEnvironment(): boolean {
 /**
  * Versione predefinita dell'applicazione definita nel client.
  */
-export const APP_CURRENT_VERSION = '0.3.0';
+export const APP_CURRENT_VERSION = '0.3.1';
 let cachedAppVersion = APP_CURRENT_VERSION;
 
 /**
@@ -92,46 +92,88 @@ export async function checkForAppUpdate(options?: {
       const { check } = await import('@tauri-apps/plugin-updater');
       const update = await check();
 
-      if (!update || !update.available) {
-        return { updateAvailable: false, updateInfo: null, error: null };
+      if (update && update.available) {
+        const updateInfo: AppUpdateInfo = {
+          version: update.version,
+          currentVersion: update.currentVersion || currentAppVer,
+          releaseNotes: update.body || undefined,
+          releaseDate: update.date || undefined,
+          rawUpdate: update,
+        };
+
+        return {
+          updateAvailable: true,
+          updateInfo,
+          error: null,
+        };
       }
 
-      const updateInfo: AppUpdateInfo = {
-        version: update.version,
-        currentVersion: update.currentVersion || currentAppVer,
-        releaseNotes: update.body || undefined,
-        releaseDate: update.date || undefined,
-        rawUpdate: update,
-      };
-
-      return {
-        updateAvailable: true,
-        updateInfo,
-        error: null,
-      };
+      if (update && !update.available) {
+        return { updateAvailable: false, updateInfo: null, error: null };
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Errore durante la verifica con Tauri Updater';
-      console.warn('Avviso controllo aggiornamenti nativo Tauri:', msg);
-      return { updateAvailable: false, updateInfo: null, error: msg };
+      const msg = err instanceof Error ? err.message : '';
+      console.warn('Controllo Tauri Updater endpoint primario:', msg);
+
+      // Se l'errore è dovuto a 404 (nessuna release pubblicata o endpoint in attesa)
+      // non interrompiamo, ma procediamo con la verifica di fallback su autopiashop.it
     }
+
+    // Fallback: controllo tramite manifest pubblico su autopiashop.it
+    try {
+      const fallbackUrls = [
+        'https://autopiashop.it/.netlify/functions/app-version',
+      ];
+
+      for (const url of fallbackUrls) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.ok) {
+            const manifest = await res.json();
+            const remoteVer = manifest?.version;
+            if (remoteVer && isNewerVersion(remoteVer, currentAppVer)) {
+              return {
+                updateAvailable: true,
+                updateInfo: {
+                  version: remoteVer,
+                  currentVersion: currentAppVer,
+                  releaseNotes: manifest.notes || `Nuova versione v${remoteVer} di Autopia Manager disponibile.`,
+                  releaseDate: manifest.pub_date || new Date().toISOString(),
+                  rawUpdate: null,
+                },
+                error: null,
+              };
+            } else if (remoteVer) {
+              return { updateAvailable: false, updateInfo: null, error: null };
+            }
+          }
+        } catch {
+          // Continua
+        }
+      }
+    } catch {
+      // Ignorato
+    }
+
+    // Se nessun aggiornamento superiore è presente, l'applicazione è aggiornata
+    return { updateAvailable: false, updateInfo: null, error: null };
   }
 
   // 2. Controllo informativo in ambiente Web / Anteprima
-  // Interroga il manifest pubblico per visualizzare lo stato senza scaricare binari Windows
   try {
-    const manifestUrl = 'https://raw.githubusercontent.com/jacobs133/autopia-manager/main/src-tauri/tauri.conf.json';
+    const manifestUrl = 'https://autopiashop.it/.netlify/functions/app-version';
     const response = await fetch(manifestUrl, { cache: 'no-store' });
     if (response.ok) {
-      const remoteConfig = await response.json();
-      const remoteVer = remoteConfig.version;
+      const manifest = await response.json();
+      const remoteVer = manifest.version;
       if (remoteVer && isNewerVersion(remoteVer, APP_CURRENT_VERSION)) {
         return {
           updateAvailable: true,
           updateInfo: {
             version: remoteVer,
             currentVersion: APP_CURRENT_VERSION,
-            releaseNotes: 'Nuova versione ufficiale disponibile su GitHub Releases per Autopia Manager Windows.',
-            releaseDate: new Date().toISOString(),
+            releaseNotes: manifest.notes || 'Nuova versione ufficiale disponibile per Autopia Manager Windows.',
+            releaseDate: manifest.pub_date || new Date().toISOString(),
             rawUpdate: null,
           },
           error: null,
@@ -139,7 +181,7 @@ export async function checkForAppUpdate(options?: {
       }
     }
   } catch {
-    // Ignorato silenziosamente in caso di offline
+    // Ignorato in dev
   }
 
   return { updateAvailable: false, updateInfo: null, error: null };
