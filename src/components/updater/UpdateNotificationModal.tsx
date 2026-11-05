@@ -205,13 +205,53 @@ export const UpdateNotificationModal: React.FC = () => {
             </div>
           )}
 
-          {/* Errore */}
+          {/* Errore o Repository Privato */}
           {isError && (
-            <div className="p-3.5 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-200 flex items-start space-x-2.5">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-bold text-red-300">Stato Controllo</div>
-                <div className="mt-0.5 text-slate-300 text-[11px]">{progress.errorMessage}</div>
+            <div className="space-y-3">
+              <div className="p-3.5 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-200 flex items-start space-x-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-red-300">Stato Controllo Rilascio</div>
+                  <div className="mt-0.5 text-slate-300 text-[11px] leading-relaxed">
+                    {progress.errorMessage}
+                  </div>
+                </div>
+              </div>
+
+              {/* Guida Risoluzione Repository GitHub Privato */}
+              <div className="p-3.5 bg-amber-950/30 border border-amber-800/50 rounded-xl space-y-2 text-xs">
+                <div className="font-bold text-amber-300 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Come sbloccare il rilevamento della v0.3.2 per tutti i PC:</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Il repository GitHub <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-300 font-mono">jacobs133/autopia-manager</code> è impostato come <strong>Privato</strong>. GitHub risponde con errore <strong>HTTP 404</strong> a tutte le richieste unauthenticated provenienti dai PC Windows.
+                </p>
+                <div className="text-[11px] text-slate-400 space-y-1 pl-1">
+                  <div>1. Apri <a href="https://github.com/jacobs133/autopia-manager/settings" target="_blank" rel="noreferrer" className="text-amber-400 hover:underline font-semibold inline-flex items-center space-x-0.5"><span>Impostazioni Repository</span><ExternalLink className="w-2.5 h-2.5 ml-0.5" /></a></div>
+                  <div>2. Scorri in fondo alla pagina fino a <strong>Danger Zone</strong></div>
+                  <div>3. Clicca su <strong>Change repository visibility</strong> → seleziona <strong>Make public</strong></div>
+                </div>
+                <div className="pt-2 flex flex-wrap gap-2">
+                  <a
+                    href="https://github.com/jacobs133/autopia-manager/releases"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-semibold inline-flex items-center space-x-1 border border-slate-700"
+                  >
+                    <span>Apri Releases su GitHub</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                  </a>
+                  <a
+                    href="https://github.com/jacobs133/autopia-manager/releases/latest/download/Autopia-Manager-Setup.exe"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[11px] font-bold inline-flex items-center space-x-1 shadow"
+                  >
+                    <DownloadCloud className="w-3 h-3" />
+                    <span>Download Ultimo Setup (.exe)</span>
+                  </a>
+                </div>
               </div>
             </div>
           )}

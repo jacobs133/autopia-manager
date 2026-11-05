@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -63,6 +66,48 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ env.SIGN_ARGS }}
+
+      - name: 5.1 Genera e pubblica latest.json e setup standardizzato nella release
+        if: success()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Generazione manifest latest.json per la release $TAG..."
+
+          # Assicura che la release esista prima di caricare gli asset
+          gh release view "$TAG" || gh release create "$TAG" --title "Autopia Manager $TAG" --notes "Release ufficiale Autopia Manager $TAG per Windows"
+
+          # Trova l'installer NSIS generato e crea la copia standardizzata Autopia-Manager-Setup.exe
+          SETUP_EXE=$(find src-tauri/target/release/bundle/nsis/ -name "*.exe" 2>/dev/null | head -n 1)
+          if [ -n "$SETUP_EXE" ] && [ -f "$SETUP_EXE" ]; then
+            echo "Trovato installer NSIS: $SETUP_EXE"
+            cp "$SETUP_EXE" Autopia-Manager-Setup.exe
+            gh release upload "$TAG" Autopia-Manager-Setup.exe --clobber || echo "Upload Autopia-Manager-Setup.exe completato o saltato"
+          fi
+
+          # Crea il file manifest latest.json compatibile con Tauri v2
+          cat << EOF > latest.json
+          {
+            "version": "$VERSION",
+            "notes": "Release ufficiale Autopia Manager v$VERSION per Windows (eBay integration e diagnostica canale)",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "",
+                "url": "https://github.com/jacobs133/autopia-manager/releases/download/$TAG/Autopia-Manager-Setup.exe"
+              },
+              "windows-i686": {
+                "signature": "",
+                "url": "https://github.com/jacobs133/autopia-manager/releases/download/$TAG/Autopia-Manager-Setup.exe"
+              }
+            }
+          }
+          EOF
+
+          gh release upload "$TAG" latest.json --clobber || echo "Upload latest.json completato o saltato"
 
       - name: 6. Caricamento degli installer generati (MSI ed EXE per Windows)
         uses: actions/upload-artifact@v4

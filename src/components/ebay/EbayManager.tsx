@@ -31,7 +31,9 @@ import {
   Copy,
   ChevronDown,
   ChevronUp,
+  X,
 } from 'lucide-react';
+import { openExternalUrl, copyToClipboard as copyExternalUrl } from '../../services/externalLinkService';
 import { useAuth } from '../../contexts/AuthContext';
 import type {
   EbayConnectionInfo,
@@ -197,21 +199,32 @@ export const EbayManager: React.FC = () => {
       if (res.authorizationUrl) {
         setPendingAuthUrl(res.authorizationUrl);
         setActionNotice(
-          'URL di autorizzazione generato! Se la finestra del browser non si apre automaticamente, clicca sul pulsante arancione "Apri eBay Sandbox".'
+          'Portale eBay Sandbox pronto per il collegamento! Se il browser non si è aperto in automatico, fai clic sul pulsante arancione "Apri eBay Sandbox" o copia il link.'
         );
 
-        if (typeof window !== 'undefined') {
-          const opened = window.open(res.authorizationUrl, '_blank', 'noopener,noreferrer');
-          if (!opened) {
-            setActionNotice(
-              `Il browser ha bloccato il popup. Clicca sul pulsante "Apri eBay Sandbox" qui sotto per procedere.`
-            );
-          }
+        // Tentativo di apertura automatica con il servizio esterno affidabile (Tauri + browser)
+        const openRes = await openExternalUrl(res.authorizationUrl);
+        if (!openRes.success) {
+          setActionNotice(
+            'Il popup automatico è stato bloccato dal sistema. Fai clic sul pulsante arancione "Apri eBay Sandbox" qui sotto per procedere.'
+          );
         }
 
-        setTimeout(() => {
-          loadStatus(true);
-        }, 5000);
+        // Controllo periodico automatico dello stato ogni 4 secondi per rilevare l'avvenuto collegamento
+        let checks = 0;
+        const interval = setInterval(async () => {
+          checks++;
+          const status = await fetchEbayConnectionStatus();
+          if (status.isConnected || status.status === 'connected') {
+            clearInterval(interval);
+            setPendingAuthUrl(null);
+            setActionNotice('Account eBay Sandbox collegato e autorizzato con successo!');
+            await loadStatus(true);
+          }
+          if (checks >= 75) {
+            clearInterval(interval); // Timeout dopo 5 minuti
+          }
+        }, 4000);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Eccezione imprevista durante l\'avvio di OAuth';
@@ -454,15 +467,42 @@ export const EbayManager: React.FC = () => {
             <div className="flex-1 leading-relaxed">{actionNotice}</div>
           </div>
           {pendingAuthUrl && (
-            <a
-              href={pendingAuthUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-colors shrink-0 shadow-md shadow-amber-500/20"
-            >
-              <span>Apri eBay Sandbox</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={async () => {
+                  await openExternalUrl(pendingAuthUrl);
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-md shadow-amber-500/20 cursor-pointer"
+              >
+                <span>Apri eBay Sandbox</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await copyExternalUrl(pendingAuthUrl);
+                  if (ok) {
+                    setCopiedItem('auth_url_banner');
+                    setTimeout(() => setCopiedItem(null), 3000);
+                  }
+                }}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-colors border border-slate-700 cursor-pointer"
+                title="Copia link negli appunti"
+              >
+                {copiedItem === 'auth_url_banner' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Copiato!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Copia Link</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -595,6 +635,96 @@ export const EbayManager: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Box Sessione OAuth eBay Attiva */}
+            {pendingAuthUrl && !isConnected && (
+              <div className="mt-6 p-4 bg-amber-950/25 border border-amber-800/50 rounded-xl space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-amber-300 flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                      <span>Autorizzazione eBay Sandbox in corso</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed max-w-xl">
+                      La sessione di accesso con eBay Sandbox è pronta. Accedi con il tuo account sviluppatore eBay e clicca su <strong>"Agree"</strong> per completare il collegamento.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPendingAuthUrl(null)}
+                    className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 cursor-pointer"
+                    title="Annulla sessione"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await openExternalUrl(pendingAuthUrl);
+                    }}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-colors shadow-md shadow-amber-500/20 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Apri eBay Sandbox nel Browser</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await copyExternalUrl(pendingAuthUrl);
+                      if (ok) {
+                        setCopiedItem('auth_url_card');
+                        setTimeout(() => setCopiedItem(null), 3000);
+                      }
+                    }}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-xs flex items-center space-x-1.5 transition-colors border border-slate-700 cursor-pointer"
+                  >
+                    {copiedItem === 'auth_url_card' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Link Copiato!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Copia Link di Accesso</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => loadStatus(true)}
+                    disabled={isLoading}
+                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium rounded-lg text-xs flex items-center space-x-1.5 border border-slate-800 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+                    <span>Verifica Collegamento Ora</span>
+                  </button>
+                </div>
+
+                <div className="pt-1">
+                  <div className="text-[10px] text-slate-400 uppercase font-semibold">URL di autorizzazione generato:</div>
+                  <div className="mt-1 p-2 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 break-all select-all flex items-center justify-between">
+                    <span className="truncate mr-2">{pendingAuthUrl}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        copyExternalUrl(pendingAuthUrl);
+                        setCopiedItem('auth_url_card');
+                        setTimeout(() => setCopiedItem(null), 3000);
+                      }}
+                      className="text-amber-400 hover:underline text-[10px] shrink-0 font-sans cursor-pointer"
+                    >
+                      {copiedItem === 'auth_url_card' ? 'Copiato' : 'Copia'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Dettagli Tecnico-Architetturali */}
             <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">

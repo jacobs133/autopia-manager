@@ -38,8 +38,10 @@ console.log('\n[1] Test Cifratura AES-256-GCM e Rifiuto Chiavi Non Valide');
   const decrypted = decryptToken(encrypted, validKey);
   assert.strictEqual(decrypted, sampleToken, 'Il testo decifrato deve coincidere con l\'originale');
 
-  // Integrità crittografica: manomissione ciphertext
-  const tamperedCipher = parts[0] + ':' + parts[1] + ':' + parts[2].slice(0, -2) + 'ff';
+  // Integrità crittografica: manomissione ciphertext (garantisce alterazione di almeno 1 bit)
+  const lastByte = parts[2].slice(-2);
+  const flippedByte = lastByte === 'ff' ? '00' : 'ff';
+  const tamperedCipher = parts[0] + ':' + parts[1] + ':' + parts[2].slice(0, -2) + flippedByte;
   assert.throws(
     () => decryptToken(tamperedCipher, validKey),
     /Unsupported state or unable to authenticate data/,

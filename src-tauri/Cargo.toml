@@ -1,6 +1,6 @@
 [package]
 name = "autopia-manager"
-version = "0.3.2"
+version = "0.3.3"
 description = "Software gestionale desktop per autodemolitori collegato ad Autopia"
 authors = ["Autopia Team"]
 license = "Proprietary"

@@ -131,9 +131,13 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       totalBytes: 0,
     });
 
-    const res = await downloadAndInstallAppUpdate(updateInfo.rawUpdate || null, (prog) => {
-      setProgress(prog);
-    });
+    const res = await downloadAndInstallAppUpdate(
+      updateInfo.rawUpdate || null,
+      (prog) => {
+        setProgress(prog);
+      },
+      updateInfo.downloadUrl
+    );
 
     if (!res.success) {
       setProgress((p) => ({
