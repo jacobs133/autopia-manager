@@ -76,3 +76,18 @@ export interface EbayOrder {
   synced_at: string;
 }
 
+export interface EbayDiagnosticCheck {
+  id: string;
+  name: string;
+  status: 'ok' | 'warning' | 'error';
+  message: string;
+  suggestion?: string;
+  details?: unknown;
+}
+
+export interface EbayDiagnosticsReport {
+  timestamp: string;
+  checks: EbayDiagnosticCheck[];
+  allPassed: boolean;
+}
+

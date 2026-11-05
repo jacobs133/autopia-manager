@@ -34,7 +34,21 @@ export const handler: Handler = async (event: HandlerEvent) => {
   }
 
   try {
-    const { ebayClientId, ebayRuName } = getRequiredEnvVars();
+    let envVars;
+    try {
+      envVars = getRequiredEnvVars();
+    } catch (envErr: unknown) {
+      const msg = envErr instanceof Error ? envErr.message : 'Variabili d\'ambiente mancanti';
+      return {
+        statusCode: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: `${msg}. Configura queste variabili nel pannello Netlify di autopiashop.it.`,
+        }),
+      };
+    }
+
+    const { ebayClientId, ebayRuName } = envVars;
     const supabase = getSupabaseAdminClient();
 
     // 1. Verifica rigorosa dell'autenticazione del demolitore (Zero-Trust)
@@ -61,7 +75,7 @@ export const handler: Handler = async (event: HandlerEvent) => {
         statusCode: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          error: 'Impossibile registrare la sessione di autorizzazione temporanea nel database.',
+          error: `Impossibile registrare la sessione temporanea nel database: ${insertError.message}. Assicurati di aver eseguito 'backend-autopiashop/schema.sql' nel SQL Editor di Supabase.`,
         }),
       };
     }
@@ -86,6 +100,10 @@ export const handler: Handler = async (event: HandlerEvent) => {
       body: JSON.stringify({
         success: true,
         authorizationUrl,
+        authorization_url: authorizationUrl,
+        auth_url: authorizationUrl,
+        authUrl: authorizationUrl,
+        url: authorizationUrl,
         state: stateToken,
         environment: 'sandbox',
         sellerId: seller.id,

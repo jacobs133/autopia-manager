@@ -4,6 +4,8 @@ import type {
   EbayOAuthInitResult,
   EbayListingItem,
   EbayOrder,
+  EbayDiagnosticCheck,
+  EbayDiagnosticsReport,
 } from '../types/ebay';
 
 export const DEFAULT_EBAY_OAUTH_BACKEND_URL = 'https://autopiashop.it/.netlify/functions';
@@ -174,7 +176,7 @@ export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
   if (!client) {
     return {
       success: false,
-      error: 'Client Supabase non inizializzato.',
+      error: 'Client Supabase non inizializzato o credenziali mancanti. Verifica la configurazione Supabase.',
     };
   }
 
@@ -184,7 +186,7 @@ export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
   if (!token) {
     return {
       success: false,
-      error: 'Sessione utente assente o scaduta. Effettua nuovamente il login.',
+      error: 'Sessione utente assente o scaduta. Effettua nuovamente il login in Autopia Manager.',
     };
   }
 
@@ -192,7 +194,7 @@ export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -209,37 +211,101 @@ export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
       return {
         success: false,
         isBackendMissing: true,
-        error: `La funzione serverless di autorizzazione (${endpoint}) non è ancora disponibile (HTTP ${res.status}). La funzione Netlify 'ebay-oauth-init' deve essere pubblicata nel repository del sito per avviare il flusso.`,
+        error: `La funzione serverless di autorizzazione (${endpoint}) non è ancora disponibile (HTTP ${res.status}). Assicurati di aver trasferito i file in backend-autopiashop/ nella cartella netlify/functions/ del sito autopiashop.it e completato il deploy.`,
+      };
+    }
+
+    // Leggi il testo grezzo della risposta per diagnosticare accuratamente sia JSON che HTML o errori
+    const rawText = await res.text();
+    let data: any = null;
+
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Se è stata restituita una pagina HTML (ad es. per via della regola SPA fallback di Netlify)
+      if (rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.includes('<html')) {
+        return {
+          success: false,
+          isBackendMissing: true,
+          error: `Il server Netlify ha restituito la pagina HTML del sito anziché l'endpoint API 'ebay-oauth-init' (HTTP ${res.status}). Assicurati che le Netlify Functions siano state caricate nella cartella netlify/functions del sito autopiashop.it.`,
+        };
+      }
+      return {
+        success: false,
+        error: `Risposta non valida dal backend (${res.status}): ${rawText.slice(0, 160)}`,
       };
     }
 
     if (!res.ok) {
-      const errJson = await res.json().catch(() => null);
+      const errMsg =
+        data?.error ||
+        data?.message ||
+        data?.errorMessage ||
+        `Il backend ha risposto con errore HTTP ${res.status}: ${res.statusText}`;
       return {
         success: false,
-        error: errJson?.error || `Il backend ha risposto con errore HTTP ${res.status}: ${res.statusText}`,
+        error: errMsg,
       };
     }
 
-    const data = await res.json();
-    if (!data?.authorizationUrl) {
+    // Supporta tutte le possibili varianti di proprietà dell'URL di autorizzazione (camelCase e snake_case)
+    const candidateUrl =
+      data?.auth_url ||
+      data?.authUrl ||
+      data?.authorizationUrl ||
+      data?.authorization_url ||
+      data?.url ||
+      data?.consentUrl ||
+      data?.consent_url ||
+      data?.redirectUrl ||
+      data?.redirect_url ||
+      data?.login_url ||
+      data?.loginUrl ||
+      data?.data?.auth_url ||
+      data?.data?.authUrl ||
+      data?.data?.authorizationUrl ||
+      data?.data?.authorization_url ||
+      data?.data?.url;
+
+    if (candidateUrl && typeof candidateUrl === 'string' && candidateUrl.startsWith('http')) {
+      return {
+        success: true,
+        authorizationUrl: candidateUrl,
+        state: data?.state || data?.data?.state,
+      };
+    }
+
+    // Se l'URL manca ma nel JSON è presente un messaggio o errore dal server (anche con status 200)
+    const serverError =
+      data?.error ||
+      data?.message ||
+      data?.errorMessage ||
+      data?.details ||
+      (data?.success === false && data?.reason);
+
+    if (serverError) {
       return {
         success: false,
-        error: 'Il backend non ha restituito un URL di autorizzazione valido.',
+        error: typeof serverError === 'string' ? serverError : JSON.stringify(serverError),
       };
     }
 
     return {
-      success: true,
-      authorizationUrl: data.authorizationUrl,
-      state: data.state,
+      success: false,
+      error: `Il backend non ha restituito un URL di autorizzazione valido. Dettagli risposta: ${JSON.stringify(data).slice(0, 220)}`,
     };
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Errore sconosciuto di connessione';
+    const isAbort = err instanceof DOMException && err.name === 'AbortError';
+    const errorMsg = isAbort
+      ? 'Timeout di connessione (12s) verso il backend Netlify.'
+      : err instanceof Error
+      ? err.message
+      : 'Errore di connessione';
+
     return {
       success: false,
       isBackendMissing: true,
-      error: `Impossibile contattare il backend per avviare OAuth (${endpoint}): ${errorMsg}. In attesa del deploy delle Netlify Functions.`,
+      error: `Impossibile contattare il backend per avviare OAuth (${endpoint}): ${errorMsg}.`,
     };
   }
 }
@@ -568,5 +634,246 @@ export async function fulfillEbayOrder(
     const msg = err instanceof Error ? err.message : 'Errore di connessione';
     return { success: false, error: msg };
   }
+}
+
+/**
+ * Esegue una suite diagnostica completa end-to-end per individuare istantaneamente
+ * qualunque collo di bottiglia o disallineamento nell'integrazione di eBay:
+ * 1. Supabase Client & Credenziali
+ * 2. Sessione Utente (JWT)
+ * 3. Profilo Autodemolitore e Stato 'approved'
+ * 4. Tabelle del database (ebay_oauth_states, seller_ebay_tokens, ebay_listings, ebay_orders)
+ * 5. Netlify Serverless Functions (ebay-oauth-status, ebay-oauth-init)
+ */
+export async function runEbayIntegrationDiagnostics(): Promise<EbayDiagnosticsReport> {
+  const checks: EbayDiagnosticCheck[] = [];
+  const client = getSupabaseClient();
+  const backendUrl = getEbayOAuthBackendBaseUrl();
+
+  // 1. Verifica Client Supabase
+  if (!client) {
+    checks.push({
+      id: 'supabase_client',
+      name: 'Client Supabase',
+      status: 'error',
+      message: 'Client Supabase non configurato o credenziali assenti.',
+      suggestion: 'Configura URL e Anon Key nella schermata Impostazioni o tramite variabili VITE_SUPABASE_URL.',
+    });
+    return { timestamp: new Date().toISOString(), checks, allPassed: false };
+  } else {
+    checks.push({
+      id: 'supabase_client',
+      name: 'Client Supabase',
+      status: 'ok',
+      message: 'Client Supabase inizializzato correttamente.',
+    });
+  }
+
+  // 2. Verifica Sessione Utente
+  let userToken: string | null = null;
+  let userId: string | null = null;
+  let userEmail: string | null = null;
+  try {
+    const { data: sessionData, error: sessionErr } = await client.auth.getSession();
+    if (sessionErr || !sessionData.session) {
+      checks.push({
+        id: 'user_session',
+        name: 'Sessione Utente Autopia',
+        status: 'error',
+        message: 'Nessuna sessione utente attiva.',
+        suggestion: 'Effettua il login in Autopia Manager con le tue credenziali.',
+      });
+    } else {
+      userToken = sessionData.session.access_token;
+      userId = sessionData.session.user.id;
+      userEmail = sessionData.session.user.email || null;
+      checks.push({
+        id: 'user_session',
+        name: 'Sessione Utente Autopia',
+        status: 'ok',
+        message: `Autenticato come ${userEmail || userId}.`,
+      });
+    }
+  } catch (err: unknown) {
+    checks.push({
+      id: 'user_session',
+      name: 'Sessione Utente Autopia',
+      status: 'error',
+      message: err instanceof Error ? err.message : 'Errore verifica sessione',
+    });
+  }
+
+  // 3. Verifica Profilo Venditore (seller_profiles)
+  if (userId) {
+    try {
+      const { data: seller, error: sellerErr } = await client
+        .from('seller_profiles')
+        .select('id, user_id, business_name, status')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (sellerErr) {
+        checks.push({
+          id: 'seller_profile',
+          name: 'Profilo Autodemolitore',
+          status: 'warning',
+          message: `Impossibile interrogare la tabella seller_profiles: ${sellerErr.message}`,
+        });
+      } else if (!seller) {
+        checks.push({
+          id: 'seller_profile',
+          name: 'Profilo Autodemolitore',
+          status: 'error',
+          message: 'Nessun record in seller_profiles collegato al tuo account utente.',
+          suggestion: `Accedi a Supabase ed inserisci un record in seller_profiles con user_id = '${userId}'.`,
+        });
+      } else if (seller.status !== 'approved') {
+        checks.push({
+          id: 'seller_profile',
+          name: 'Profilo Autodemolitore',
+          status: 'warning',
+          message: `Profilo trovato (${seller.business_name || seller.id}) ma con stato '${seller.status}'. Richiesto 'approved'.`,
+          suggestion: `Esegui in Supabase: UPDATE public.seller_profiles SET status = 'approved' WHERE user_id = '${userId}';`,
+        });
+      } else {
+        checks.push({
+          id: 'seller_profile',
+          name: 'Profilo Autodemolitore',
+          status: 'ok',
+          message: `Profilo venditore approvato: ${seller.business_name || seller.id}.`,
+        });
+      }
+    } catch (e: unknown) {
+      checks.push({
+        id: 'seller_profile',
+        name: 'Profilo Autodemolitore',
+        status: 'warning',
+        message: e instanceof Error ? e.message : 'Errore controllo profilo',
+      });
+    }
+  }
+
+  // 4. Verifica Tabelle Schema SQL Supabase
+  try {
+    const { error: stateTableErr } = await (client as any)
+      .from('ebay_oauth_states')
+      .select('state_token', { count: 'exact', head: true });
+
+    if (stateTableErr && (stateTableErr.code === '42P01' || stateTableErr.message.includes('does not exist'))) {
+      checks.push({
+        id: 'db_schema',
+        name: 'Tabelle Database eBay (schema.sql)',
+        status: 'error',
+        message: 'La tabella public.ebay_oauth_states non esiste nel database Supabase.',
+        suggestion: 'Esegui il file backend-autopiashop/schema.sql nel SQL Editor di Supabase.',
+      });
+    } else {
+      checks.push({
+        id: 'db_schema',
+        name: 'Tabelle Database eBay (schema.sql)',
+        status: 'ok',
+        message: 'Tabelle del database (ebay_oauth_states, seller_ebay_tokens) presenti.',
+      });
+    }
+  } catch (err: unknown) {
+    checks.push({
+      id: 'db_schema',
+      name: 'Tabelle Database eBay (schema.sql)',
+      status: 'warning',
+      message: err instanceof Error ? err.message : 'Verifica schema completata con avviso',
+    });
+  }
+
+  // 5. Verifica Raggiungibilità Backend Netlify
+  try {
+    const pingEndpoint = `${backendUrl}/ebay-oauth-init`;
+    const res = await fetch(pingEndpoint, {
+      method: 'POST',
+      headers: {
+        ...(userToken ? { Authorization: `Bearer ${userToken}` } : {}),
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    });
+
+    const rawText = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      // Ignorato se non JSON
+    }
+
+    if (res.status === 404) {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'error',
+        message: `Endpoint non trovato (HTTP 404) su ${pingEndpoint}.`,
+        suggestion: 'Assicurati di aver copiato i file di backend-autopiashop/ in netlify/functions/ del sito e completato il deploy.',
+      });
+    } else if (rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.includes('<html')) {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'error',
+        message: 'Il server ha restituito la pagina HTML del sito anziché la funzione API.',
+        suggestion: 'Verifica le regole di rewrite in netlify.toml o _redirects sul repository del sito autopiashop.it.',
+      });
+    } else if (
+      json?.auth_url ||
+      json?.authUrl ||
+      json?.authorizationUrl ||
+      json?.authorization_url ||
+      json?.url ||
+      json?.data?.auth_url ||
+      json?.data?.authorizationUrl
+    ) {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'ok',
+        message: 'Funzione ebay-oauth-init pienamente operativa: URL di autorizzazione generato con successo!',
+      });
+    } else if (json?.error && json.error.includes("Variabili d'ambiente")) {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'error',
+        message: `Variabili d'ambiente eBay mancanti su Netlify: ${json.error}`,
+        suggestion: 'Configura EBAY_SANDBOX_CLIENT_ID, EBAY_SANDBOX_CLIENT_SECRET, EBAY_SANDBOX_RUNAME, EBAY_TOKEN_ENCRYPTION_KEY, SUPABASE_SERVICE_ROLE_KEY su Netlify.',
+      });
+    } else if (!res.ok) {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'warning',
+        message: `Il backend ha risposto con HTTP ${res.status}: ${json?.error || json?.message || rawText.slice(0, 100)}`,
+        suggestion: json?.error || undefined,
+      });
+    } else {
+      checks.push({
+        id: 'netlify_functions',
+        name: 'Backend Serverless Netlify',
+        status: 'ok',
+        message: `Endpoint raggiungibile (${res.status} OK).`,
+      });
+    }
+  } catch (err: unknown) {
+    checks.push({
+      id: 'netlify_functions',
+      name: 'Backend Serverless Netlify',
+      status: 'error',
+      message: `Impossibile connettersi al backend: ${err instanceof Error ? err.message : 'Errore di rete'}`,
+      suggestion: 'Controlla la tua connessione internet o verifica che https://autopiashop.it sia online.',
+    });
+  }
+
+  const allPassed = checks.every((c) => c.status === 'ok');
+  return {
+    timestamp: new Date().toISOString(),
+    checks,
+    allPassed,
+  };
 }
 
