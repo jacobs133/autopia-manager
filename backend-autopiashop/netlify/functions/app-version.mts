@@ -1,7 +1,7 @@
 import type { Handler, HandlerEvent } from '@netlify/functions';
 import { getCorsHeaders } from './ebay-shared.mts';
 
-export const APP_LATEST_VERSION = '0.3.3';
+export const APP_LATEST_VERSION = '0.3.4';
 
 /**
  * Endpoint pubblico per il controllo degli aggiornamenti software di Autopia Manager.

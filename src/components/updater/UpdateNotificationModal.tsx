@@ -222,7 +222,7 @@ export const UpdateNotificationModal: React.FC = () => {
               <div className="p-3.5 bg-amber-950/30 border border-amber-800/50 rounded-xl space-y-2 text-xs">
                 <div className="font-bold text-amber-300 flex items-center space-x-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Come sbloccare il rilevamento della v0.3.2 per tutti i PC:</span>
+                  <span>Come garantire il download e l'aggiornamento automatico su tutti i PC:</span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
                   Il repository GitHub <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-300 font-mono">jacobs133/autopia-manager</code> è impostato come <strong>Privato</strong>. GitHub risponde con errore <strong>HTTP 404</strong> a tutte le richieste unauthenticated provenienti dai PC Windows.
@@ -280,6 +280,25 @@ export const UpdateNotificationModal: React.FC = () => {
                   <DownloadCloud className="w-4 h-4" />
                   <span>Scarica & Aggiorna Ora</span>
                 </button>
+              ) : isError ? (
+                <div className="flex items-center space-x-2">
+                  <a
+                    href="https://github.com/jacobs133/autopia-manager/releases/latest/download/Autopia-Manager-Setup.exe"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors shadow-lg shadow-amber-500/10 flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>Scarica Installer (.exe)</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={closeUpdateModal}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                  >
+                    Chiudi
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"

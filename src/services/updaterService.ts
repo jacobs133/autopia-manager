@@ -43,7 +43,7 @@ export function isTauriEnvironment(): boolean {
 /**
  * Versione predefinita dell'applicazione definita nel client.
  */
-export const APP_CURRENT_VERSION = '0.3.3';
+export const APP_CURRENT_VERSION = '0.3.4';
 let cachedAppVersion = APP_CURRENT_VERSION;
 
 /**
@@ -335,14 +335,42 @@ export async function downloadAndInstallAppUpdate(
       return { success: true, error: null };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Errore durante il download dell\'aggiornamento';
-      onProgress({
-        status: 'ERROR',
-        percentage: 0,
-        downloadedBytes: 0,
-        totalBytes: 0,
-        errorMessage: msg,
-      });
-      return { success: false, error: msg };
+      console.warn('Download nativo non riuscito (es. firma o pacchetto non sincronizzato), fallback al download diretto dell\'installer Setup.exe:', msg);
+
+      // Invece di interrompere con errore, avviamo il download diretto dell'installer
+      try {
+        const targetUrl =
+          fallbackDownloadUrl ||
+          'https://github.com/jacobs133/autopia-manager/releases/latest/download/Autopia-Manager-Setup.exe';
+
+        onProgress({
+          status: 'DOWNLOADING',
+          percentage: 80,
+          downloadedBytes: 0,
+          totalBytes: 0,
+        });
+
+        await openExternalUrl(targetUrl);
+
+        onProgress({
+          status: 'READY_TO_RELAUNCH',
+          percentage: 100,
+          downloadedBytes: 0,
+          totalBytes: 0,
+        });
+
+        return { success: true, error: null };
+      } catch (fallbackErr: unknown) {
+        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : msg;
+        onProgress({
+          status: 'ERROR',
+          percentage: 0,
+          downloadedBytes: 0,
+          totalBytes: 0,
+          errorMessage: `Download automatico fallito (${fallbackMsg}). Usa il pulsante "Download Ultimo Setup (.exe)" per aggiornare.`,
+        });
+        return { success: false, error: fallbackMsg };
+      }
     }
   }
 
