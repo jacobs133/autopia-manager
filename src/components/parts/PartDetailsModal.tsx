@@ -272,6 +272,19 @@ export const PartDetailsModal: React.FC<PartDetailsModalProps> = ({
             </div>
           )}
 
+          {/* Sezione Ricambio Venduto / Esaurito */}
+          {(item.status === 'sold' || item.quantity === 0) && (
+            <div className="p-4 rounded-lg bg-slate-900 border border-slate-700/80 space-y-1.5">
+              <div className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Ricambio Venduto / Esaurito ({item.sold_quantity || 1} pz)</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                La disponibilità di questo ricambio è esaurita. Puoi consultare i dettagli della vendita o le richieste associate nella sezione <strong>Ordini & Vendite</strong> del gestionale.
+              </p>
+            </div>
+          )}
+
           {/* Sezione Scarico Rapido Vendita al Banco */}
           {item.quantity > 0 && (
             <div className="p-4 rounded-lg bg-emerald-950/30 border border-emerald-800/50 space-y-3">

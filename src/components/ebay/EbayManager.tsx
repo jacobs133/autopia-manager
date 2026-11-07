@@ -144,14 +144,36 @@ export const EbayManager: React.FC = () => {
 
   // Rileva istantaneamente il ritorno dell'utente dal browser eBay ad Autopia Manager
   useEffect(() => {
-    const handleFocus = () => {
+    const handleRecheck = () => {
       loadStatus(true);
     };
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', handleRecheck);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleRecheck();
+      }
+    });
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', handleRecheck);
+      document.removeEventListener('visibilitychange', handleRecheck);
     };
   }, [loadStatus]);
+
+  // Polling automatico dello stato (ogni 2s) mentre l'utente è sul browser eBay ad autorizzare
+  useEffect(() => {
+    if (!pendingAuthUrl || connectionInfo?.isConnected) return;
+
+    const timer = setInterval(async () => {
+      const status = await fetchEbayConnectionStatus(activeSeller?.id);
+      if (status.isConnected || status.status === 'connected') {
+        setConnectionInfo(status);
+        setPendingAuthUrl(null);
+        setActionNotice('Account eBay Sandbox rilevato e collegato con successo!');
+      }
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [pendingAuthUrl, connectionInfo?.isConnected, activeSeller?.id]);
 
   // 2. Caricamento Inserzioni e Magazzino per Fase 3B
   const loadListingsAndWarehouse = useCallback(async () => {
@@ -225,7 +247,7 @@ export const EbayManager: React.FC = () => {
           );
         }
 
-        // Controllo periodico automatico dello stato ogni 2.5 secondi per rilevare l'avvenuto collegamento
+        // Controllo periodico automatico dello stato per rilevare l'avvenuto collegamento
         let checks = 0;
         const interval = setInterval(async () => {
           checks++;
@@ -233,13 +255,14 @@ export const EbayManager: React.FC = () => {
           if (status.isConnected || status.status === 'connected') {
             clearInterval(interval);
             setPendingAuthUrl(null);
+            setConnectionInfo(status);
             setActionNotice('Account eBay Sandbox collegato e autorizzato con successo!');
-            await loadStatus(true);
+            await loadStatus(false);
           }
           if (checks >= 120) {
             clearInterval(interval); // Timeout dopo 5 minuti
           }
-        }, 2500);
+        }, 2000);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Eccezione imprevista durante l\'avvio di OAuth';
@@ -712,7 +735,7 @@ export const EbayManager: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => loadStatus(true)}
+                    onClick={() => loadStatus(false)}
                     disabled={isLoading}
                     className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium rounded-lg text-xs flex items-center space-x-1.5 border border-slate-800 cursor-pointer disabled:opacity-50"
                   >

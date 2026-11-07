@@ -16,6 +16,7 @@ import { ListingsManager } from './components/listings/ListingsManager';
 import { CsvImportManager } from './components/import/CsvImportManager';
 import { AdminManager } from './components/admin/AdminManager';
 import { EbayManager } from './components/ebay/EbayManager';
+import { OrdersManager } from './components/orders/OrdersManager';
 import {
   Wrench,
   CheckCircle2,
@@ -35,6 +36,7 @@ import {
   Settings,
   HelpCircle,
   Globe,
+  ShoppingBag,
 } from 'lucide-react';
 
 function AppContent() {
@@ -261,6 +263,25 @@ function AppContent() {
             </div>
 
             <div
+              onClick={() => setActiveSection('orders')}
+              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Vendite & Richieste
+                </span>
+                <ShoppingBag className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="text-lg font-bold text-slate-100">Ordini & Acquisti</div>
+              <p className="text-xs text-slate-400">
+                Verifica i pezzi venduti, conferma le richieste clienti e gestisci spedizioni e tracking.
+              </p>
+              <div className="pt-2 text-xs text-emerald-400 font-medium flex items-center space-x-1">
+                <span>Visualizza Ordini & Vendite →</span>
+              </div>
+            </div>
+
+            <div
               onClick={() => setActiveSection('listings')}
               className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
             >
@@ -371,6 +392,9 @@ function AppContent() {
 
       {/* Modulo Magazzino & Ricambi Reale (Fase 2) */}
       {activeSection === 'parts' && <PartsManager />}
+
+      {/* Modulo Ordini & Richieste di Vendita */}
+      {activeSection === 'orders' && <OrdersManager />}
 
       {/* Modulo Annunci Marketplace Autopia Shop (Fase 2) */}
       {activeSection === 'listings' && <ListingsManager />}

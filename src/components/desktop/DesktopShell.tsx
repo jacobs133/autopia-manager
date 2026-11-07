@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Globe,
   Sparkles,
+  ShoppingBag,
 } from 'lucide-react';
 import { TitleBar } from './TitleBar';
 import { StatusBar } from './StatusBar';
@@ -20,7 +21,7 @@ import { UpdateNotificationModal } from '../updater/UpdateNotificationModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUpdate } from '../../contexts/UpdateContext';
 
-export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'listings' | 'import' | 'ebay' | 'settings' | 'admin';
+export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'orders' | 'listings' | 'import' | 'ebay' | 'settings' | 'admin';
 
 interface DesktopShellProps {
   children?: React.ReactNode;
@@ -54,6 +55,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         return 'Parco Veicoli Demoliti';
       case 'parts':
         return 'Magazzino & Ricambi';
+      case 'orders':
+        return 'Ordini & Richieste di Vendita';
       case 'listings':
         return 'Annunci Marketplace Autopia';
       case 'import':
@@ -96,6 +99,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       id: 'parts',
       label: 'Magazzino & Ricambi',
       icon: <Package className="w-4 h-4" />,
+      disabled: !isApproved,
+    },
+    {
+      id: 'orders',
+      label: 'Ordini & Vendite',
+      icon: <ShoppingBag className="w-4 h-4 text-emerald-400" />,
       disabled: !isApproved,
     },
     {

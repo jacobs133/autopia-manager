@@ -67,22 +67,36 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     };
   }
 
-  // Dual Check: Interrogazione diretta Supabase per superare istantaneamente qualsiasi eventuale cache del CDN Netlify
+  // Dual Check: Interrogazione diretta Supabase (seller_ebay_tokens)
   let directTokenRow: any = null;
   try {
-    let dbQuery = (client as any)
-      .from('seller_ebay_tokens')
-      .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
-      .ilike('environment', 'sandbox')
-      .eq('is_active', true);
-
+    // 1. Prova prima con il sellerId specifico
     if (sellerId) {
-      dbQuery = dbQuery.eq('seller_id', sellerId);
+      const { data: dbRows, error: dbErr } = await (client as any)
+        .from('seller_ebay_tokens')
+        .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
+        .eq('seller_id', sellerId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!dbErr && dbRows && dbRows.length > 0 && dbRows[0].is_active) {
+        directTokenRow = dbRows[0];
+      }
     }
 
-    const { data: dbRows } = await dbQuery.order('updated_at', { ascending: false }).limit(1);
-    if (dbRows && dbRows.length > 0 && dbRows[0].is_active) {
-      directTokenRow = dbRows[0];
+    // 2. Se non trovato o sellerId non specificato, cerca qualsiasi record attivo accessibile all'utente (policy RLS)
+    if (!directTokenRow) {
+      const { data: anyRows, error: anyErr } = await (client as any)
+        .from('seller_ebay_tokens')
+        .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (!anyErr && anyRows && anyRows.length > 0 && anyRows[0].is_active) {
+        directTokenRow = anyRows[0];
+      }
     }
   } catch (dbErr) {
     console.debug('[ebayService] Controllo diretto Supabase token:', dbErr);
@@ -101,17 +115,32 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(endpoint, {
+    // CRITICO: Non inviare MAI 'Cache-Control' o 'Pragma' personalizzati negli headers,
+    // poiché causano il fallimento del preflight CORS sui server Netlify.
+    // L'invalidazione cache è già garantita dal parametro '_t' nell'URL.
+    let res = await fetch(endpoint, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
       },
-      cache: 'no-store',
       signal: controller.signal,
     });
+
+    // Se GET restituisce 405 (Method Not Allowed), esegui fallback a POST con Content-Type consentito da Netlify
+    if (res.status === 405) {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ seller_id: sellerId || undefined }),
+        signal: controller.signal,
+      });
+    }
+
     clearTimeout(timeoutId);
 
     // Se l'endpoint non è ancora deployato su Netlify (404/502/503), ma da Supabase risulta connesso
@@ -210,6 +239,23 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
       ? directTokenRow.scopes
       : ['https://api.ebay.com/oauth/api_scope'];
 
+    // Se connesso, salva una cache locale a supporto della resilienza desktop
+    if (isConnected && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(
+          'autopia_ebay_status_cached',
+          JSON.stringify({
+            isConnected: true,
+            ebayUsername,
+            connectedAt,
+            cachedAt: Date.now(),
+          })
+        );
+      } catch {
+        // Ignora eccezioni localStorage
+      }
+    }
+
     return {
       isConnected,
       environment: data?.environment || 'sandbox',
@@ -235,6 +281,31 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
         status: 'connected',
         message: 'Account eBay Sandbox collegato con successo.',
       };
+    }
+
+    // Controlla cache locale recente (< 12 ore) per evitare falsi negativi durante cali di rete
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const cachedStr = window.localStorage.getItem('autopia_ebay_status_cached');
+        if (cachedStr) {
+          const cached = JSON.parse(cachedStr);
+          if (cached?.isConnected && Date.now() - (cached.cachedAt || 0) < 12 * 3600 * 1000) {
+            return {
+              isConnected: true,
+              environment: 'sandbox',
+              ebayUsername: cached.ebayUsername || 'Utente Sandbox',
+              connectedAt: cached.connectedAt || null,
+              tokenExpiresAt: null,
+              scopes: ['https://api.ebay.com/oauth/api_scope'],
+              lastCheckedAt: nowIso,
+              status: 'connected',
+              message: 'Account eBay Sandbox collegato (verificato da sessione recente).',
+            };
+          }
+        }
+      } catch {
+        // Ignora
+      }
     }
 
     const isAbort = err instanceof DOMException && err.name === 'AbortError';
@@ -443,6 +514,14 @@ export async function disconnectEbayAccount(): Promise<{ success: boolean; error
         success: false,
         error: errJson?.error || `Errore del server durante la disconnessione (HTTP ${res.status})`,
       };
+    }
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem('autopia_ebay_status_cached');
+      } catch {
+        // Ignora
+      }
     }
 
     return { success: true };
