@@ -11,6 +11,8 @@ import type {
   SellerStatus,
 } from '../types/inventory';
 import type { SellerProfile } from '../contexts/AuthContext';
+import type { SellerVehicle } from '../types/vehicles';
+import { generateSmartPartDescription, detectSideFromName } from './recommendedPartsService';
 
 export const ADMIN_EMAIL = 'lollogamer2009@gmail.com';
 
@@ -305,6 +307,17 @@ export async function createInventoryItem(
 
     if (error) {
       return { data: null, error: `Errore salvataggio ricambio: ${error.message}` };
+    }
+
+    if (data?.id && payload.source_vehicle_id) {
+      try {
+        await client.from('compatibility').insert({
+          inventory_id: data.id,
+          vehicle_id: payload.source_vehicle_id,
+        });
+      } catch (compErr) {
+        console.warn('Associazione tabella compatibility:', compErr);
+      }
     }
 
     return { data, error: null };
@@ -870,3 +883,200 @@ export async function fetchAdminPlatformStats(
     };
   }
 }
+
+/**
+ * Crea in batch le bozze dei ricambi selezionati recuperati da un'auto demolita.
+ * Ogni bozza viene salvata con status: 'inactive' (Bozza Offline),
+ * descrizione strutturata precompilata, associazione veicolo (seller_vehicle_id)
+ * e compatibilità con il modello del catalogo (source_vehicle_id e tabella compatibility).
+ */
+export async function createBatchDraftsFromVehicle(params: {
+  sellerId: string;
+  sellerVehicle: SellerVehicle;
+  selectedParts: { name: string; category?: string; defaultSide?: string }[];
+}): Promise<{ data: InventoryItem[]; count: number; error: string | null }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { data: [], count: 0, error: 'Client Supabase non inizializzato' };
+  }
+
+  const { sellerId, sellerVehicle, selectedParts } = params;
+  if (!selectedParts || selectedParts.length === 0) {
+    return { data: [], count: 0, error: 'Nessun ricambio selezionato per il caricamento bozze' };
+  }
+
+  try {
+    const createdItems: InventoryItem[] = [];
+
+    for (const part of selectedParts) {
+      const cleanName = part.name.trim();
+      if (!cleanName) continue;
+
+      // 1. Trova o crea l'anagrafica part
+      const partRes = await findOrCreatePart(cleanName, null);
+      if (!partRes.partId) continue;
+
+      // 2. Genera descrizione leggibile e strutturata
+      const smartDescription = generateSmartPartDescription(cleanName, {
+        make: sellerVehicle.make,
+        model: sellerVehicle.model,
+        version: sellerVehicle.version,
+        engine: sellerVehicle.engine,
+        fuel_type: sellerVehicle.fuel_type,
+        power: sellerVehicle.power,
+        year: sellerVehicle.year,
+        plate: sellerVehicle.plate,
+        vin: sellerVehicle.vin,
+      });
+
+      // 3. Determina il lato appropriato
+      const side = part.defaultSide || detectSideFromName(cleanName) || null;
+
+      // 4. Titolo contestuale e pulito per il ricambio
+      let title = `${cleanName} ${sellerVehicle.make} ${sellerVehicle.model}`;
+      if (sellerVehicle.year) {
+        title += ` ${sellerVehicle.year}`;
+      }
+
+      const insertPayload: InventoryInsert = {
+        seller_id: sellerId,
+        part_id: partRes.partId,
+        seller_vehicle_id: sellerVehicle.id,
+        source_vehicle_id: sellerVehicle.catalog_vehicle_id || null,
+        title: title.slice(0, 250),
+        description: smartDescription,
+        price: 0, // Prezzo 0 indica bozza incompleta da confermare
+        quantity: 1,
+        condition: 'buono',
+        side: side || null,
+        status: 'inactive', // Bozza offline
+        pickup_available: true,
+        shipping_available: true,
+        shipping_cost: 12.0,
+        reserved_quantity: 0,
+        sold_quantity: 0,
+        views: 0,
+        is_demo: false,
+      };
+
+      const { data: inserted, error: insertErr } = await client
+        .from('inventories')
+        .insert(insertPayload)
+        .select('*')
+        .single();
+
+      if (insertErr || !inserted) {
+        console.warn('[partsService] Errore inserimento bozza ricambio:', insertErr?.message);
+        continue;
+      }
+
+      // 5. Inserimento compatibilità verificata se catalog_vehicle_id è presente
+      if (sellerVehicle.catalog_vehicle_id) {
+        try {
+          await client.from('compatibility').insert({
+            inventory_id: inserted.id,
+            vehicle_id: sellerVehicle.catalog_vehicle_id,
+            verification: 'seller_declared',
+            source: 'demolizione_piazzale',
+            notes: `Recuperato da veicolo targa: ${sellerVehicle.plate || 'N.D.'}`,
+          });
+        } catch (compErr) {
+          console.debug('[partsService] Inserimento compatibilità:', compErr);
+        }
+      }
+
+      createdItems.push(inserted);
+    }
+
+    return {
+      data: createdItems,
+      count: createdItems.length,
+      error: createdItems.length === 0 ? 'Impossibile creare le bozze dei ricambi' : null,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Eccezione generazione bozze ricambi';
+    return { data: [], count: 0, error: msg };
+  }
+}
+
+/**
+ * Pubblica contemporaneamente tutte le bozze pronte (con prezzo > 0 e giacenza >= 1).
+ */
+export async function publishBatchDrafts(
+  sellerId: string,
+  itemIds: string[]
+): Promise<{ successCount: number; error: string | null }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { successCount: 0, error: 'Client Supabase non inizializzato' };
+  }
+
+  if (!itemIds || itemIds.length === 0) {
+    return { successCount: 0, error: 'Nessun ricambio selezionato per la pubblicazione' };
+  }
+
+  try {
+    let successCount = 0;
+    for (const id of itemIds) {
+      // Verifica che il prezzo sia valido (> 0)
+      const { data: item } = await client
+        .from('inventories')
+        .select('id, price, quantity')
+        .eq('id', id)
+        .eq('seller_id', sellerId)
+        .single();
+
+      if (item && Number(item.price) > 0 && Number(item.quantity) > 0) {
+        const { error: updErr } = await client
+          .from('inventories')
+          .update({
+            status: 'available',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('seller_id', sellerId);
+
+        if (!updErr) {
+          successCount++;
+        }
+      }
+    }
+
+    return { successCount, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore pubblicazione massiva bozze';
+    return { successCount: 0, error: msg };
+  }
+}
+
+/**
+ * Recupera l'elenco di tutte le bozze (status = 'inactive') collegate a un determinato veicolo del piazzale.
+ */
+export async function fetchVehicleDrafts(
+  sellerId: string,
+  sellerVehicleId: string
+): Promise<{ data: InventoryItem[]; error: string | null }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { data: [], error: 'Client Supabase non disponibile' };
+  }
+
+  try {
+    const { data, error } = await client
+      .from('inventories')
+      .select('*')
+      .eq('seller_id', sellerId)
+      .eq('seller_vehicle_id', sellerVehicleId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return { data: [], error: error.message };
+    }
+
+    return { data: data || [], error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Errore lettura bozze veicolo';
+    return { data: [], error: msg };
+  }
+}
+

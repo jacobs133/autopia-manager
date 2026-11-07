@@ -1,7 +1,7 @@
 import type { Handler, HandlerEvent } from '@netlify/functions';
 import { getCorsHeaders } from './ebay-shared.mts';
 
-export const APP_LATEST_VERSION = '0.3.4';
+export const APP_LATEST_VERSION = '0.3.5';
 
 /**
  * Endpoint pubblico per il controllo degli aggiornamenti software di Autopia Manager.
@@ -23,8 +23,10 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
   // Permette di leggere la versione target anche dal query param o default
   const releaseNotes = [
-    '• Apertura nativa e affidabile del portale eBay Sandbox nel browser predefinito di Windows (bypass popup blocker WebView2)',
-    '• Pulsante "Copia Link di Accesso" e verifica periodica automatica del completamento OAuth',
+    '• Riconoscimento immediato del completamento del collegamento eBay Sandbox al ritorno nell\'app (risolto loop di riconnessione)',
+    '• Rilevamento istantaneo con evento focus di Windows e dual-check Supabase + Netlify anti-cache',
+    '• Chiusura automatica del box di autorizzazione in sospeso non appena l\'account risulta connesso',
+    '• Apertura nativa e affidabile del portale eBay Sandbox nel browser predefinito di Windows',
     '• Supporto multi-canale aggiornamenti (GitHub Releases + Netlify + latest.json)',
     '• Integrazione completa eBay Sandbox (Fase 3A: OAuth 2.0 protetto)',
     '• Fase 3B: Pubblicazione annunci ricambi con codici OEM e foto',

@@ -47,6 +47,7 @@ import {
 import { VehicleFormModal } from './VehicleFormModal';
 import { VehicleDetailsModal } from './VehicleDetailsModal';
 import { DeleteVehicleModal } from './DeleteVehicleModal';
+import { VehiclePartsExtractorModal } from './VehiclePartsExtractorModal';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const VehiclesManager: React.FC = () => {
@@ -106,6 +107,7 @@ export const VehiclesManager: React.FC = () => {
 
   const [selectedVehicleForDetails, setSelectedVehicleForDetails] = useState<SellerVehicle | null>(null);
   const [vehicleToDelete, setVehicleToDelete] = useState<SellerVehicle | null>(null);
+  const [extractorVehicle, setExtractorVehicle] = useState<SellerVehicle | null>(null);
 
   // Debounce per ricerca piazzale (350ms)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -702,7 +704,16 @@ export const VehiclesManager: React.FC = () => {
                         </td>
 
                         <td className="py-2.5 px-3 text-right">
-                          <div className="flex items-center justify-end space-x-1">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setExtractorVehicle(v)}
+                              title="Recupera e carica ricambi da questo veicolo"
+                              className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded text-[11px] font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              <span className="hidden sm:inline">Recupera Ricambi</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => setSelectedVehicleForDetails(v)}
@@ -1089,9 +1100,12 @@ export const VehiclesManager: React.FC = () => {
             setVehicleToEdit(null);
             setCatalogVehicleToRegister(null);
           }}
-          onSuccess={() => {
+          onSuccess={(savedVehicle, andOpenPartsExtractor) => {
             loadVehicles();
             setActiveTab('yard');
+            if (andOpenPartsExtractor) {
+              setExtractorVehicle(savedVehicle);
+            }
           }}
           sellerId={sellerId}
           vehicleToEdit={vehicleToEdit}
@@ -1112,7 +1126,23 @@ export const VehiclesManager: React.FC = () => {
           setSelectedVehicleForDetails(null);
           setVehicleToDelete(v);
         }}
+        onExtractParts={(v) => {
+          setExtractorVehicle(v);
+        }}
       />
+
+      {/* Modale Estrazione Rapida Ricambi dal Veicolo */}
+      {sellerId && extractorVehicle && (
+        <VehiclePartsExtractorModal
+          isOpen={Boolean(extractorVehicle)}
+          onClose={() => setExtractorVehicle(null)}
+          vehicle={extractorVehicle}
+          sellerId={sellerId}
+          onComplete={() => {
+            loadVehicles();
+          }}
+        />
+      )}
 
       {/* Modale Eliminazione Sicura */}
       {sellerId && (

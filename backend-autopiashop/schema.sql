@@ -66,8 +66,19 @@ CREATE INDEX IF NOT EXISTS idx_seller_ebay_tokens_seller_env
 -- Abilitazione Row Level Security (RLS)
 ALTER TABLE public.seller_ebay_tokens ENABLE ROW LEVEL SECURITY;
 
--- Nessuna policy per anon o authenticated:
--- Né il client desktop, né altri venditori possono eseguire SELECT o accedere ai token.
+-- Policy di lettura per il solo venditore proprietario:
+-- Consente la verifica istantanea dello stato del canale eBay dal desktop
+DROP POLICY IF EXISTS "Sellers can view own ebay token status" ON public.seller_ebay_tokens;
+CREATE POLICY "Sellers can view own ebay token status"
+  ON public.seller_ebay_tokens
+  FOR SELECT
+  TO authenticated
+  USING (
+    seller_id IN (
+      SELECT id FROM public.seller_profiles WHERE user_id = auth.uid()
+    )
+  );
+
 COMMENT ON TABLE public.seller_ebay_tokens IS 'Credenziali e token eBay cifrati AES-256-GCM associati strettamente all autodemolitore';
 
 

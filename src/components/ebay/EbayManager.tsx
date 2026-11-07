@@ -131,11 +131,26 @@ export const EbayManager: React.FC = () => {
     }
     const info = await fetchEbayConnectionStatus(activeSeller?.id);
     setConnectionInfo(info);
+    if (info.isConnected) {
+      setPendingAuthUrl(null);
+      setActionNotice(null);
+    }
     setIsLoading(false);
   }, [activeSeller?.id]);
 
   useEffect(() => {
     loadStatus();
+  }, [loadStatus]);
+
+  // Rileva istantaneamente il ritorno dell'utente dal browser eBay ad Autopia Manager
+  useEffect(() => {
+    const handleFocus = () => {
+      loadStatus(true);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadStatus]);
 
   // 2. Caricamento Inserzioni e Magazzino per Fase 3B
@@ -210,21 +225,21 @@ export const EbayManager: React.FC = () => {
           );
         }
 
-        // Controllo periodico automatico dello stato ogni 4 secondi per rilevare l'avvenuto collegamento
+        // Controllo periodico automatico dello stato ogni 2.5 secondi per rilevare l'avvenuto collegamento
         let checks = 0;
         const interval = setInterval(async () => {
           checks++;
-          const status = await fetchEbayConnectionStatus();
+          const status = await fetchEbayConnectionStatus(activeSeller?.id);
           if (status.isConnected || status.status === 'connected') {
             clearInterval(interval);
             setPendingAuthUrl(null);
             setActionNotice('Account eBay Sandbox collegato e autorizzato con successo!');
             await loadStatus(true);
           }
-          if (checks >= 75) {
+          if (checks >= 120) {
             clearInterval(interval); // Timeout dopo 5 minuti
           }
-        }, 4000);
+        }, 2500);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Eccezione imprevista durante l\'avvio di OAuth';

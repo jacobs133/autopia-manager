@@ -36,7 +36,7 @@ import {
 interface VehicleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (savedVehicle: SellerVehicle) => void;
+  onSuccess: (savedVehicle: SellerVehicle, andOpenPartsExtractor?: boolean) => void;
   sellerId: string;
   vehicleToEdit?: SellerVehicle | null;
   initialCatalogVehicle?: CatalogVehicle | null;
@@ -91,6 +91,7 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   const [year, setYear] = useState<string>('');
   const [plate, setPlate] = useState('');
   const [vin, setVin] = useState('');
+  const [mileage, setMileage] = useState('');
   const [arrivalDate, setArrivalDate] = useState(new Date().toISOString().split('T')[0]);
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState('in_attesa');
@@ -123,6 +124,14 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
       setStatus(vehicleToEdit.status || 'in_attesa');
       setNotes(vehicleToEdit.notes || '');
       setPhotoUrl(vehicleToEdit.photo_url || '');
+
+      // Estrazione eventuale chilometraggio salvato nelle note
+      const kmMatch = vehicleToEdit.notes?.match(/\[Km:\s*([^\]]+)\]/i);
+      if (kmMatch) {
+        setMileage(kmMatch[1].trim());
+      } else {
+        setMileage('');
+      }
 
       // Se il veicolo ha un catalog_vehicle_id, caricalo dal catalogo centrale
       if (vehicleToEdit.catalog_vehicle_id) {
@@ -368,8 +377,8 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   );
 
   // 4. Salvataggio veicolo
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 4. Salvataggio veicolo
+  const executeSubmit = async (andOpenPartsExtractor = false) => {
     setFormError(null);
 
     if (!selectedCatalogVehicle) {
@@ -389,6 +398,17 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
         `L'anno di immatricolazione (${yearNumber}) non rientra nel periodo di produzione del modello (${selectedCatalogVehicle.year_from || '—'} - ${selectedCatalogVehicle.year_to || 'in corso'}). Spunta la casella di conferma se si tratta di immatricolazione speciale o prima registrazione tardiva.`
       );
       return;
+    }
+
+    // Costruzione note strutturate con eventuale chilometraggio
+    let finalNotes = notes.trim();
+    if (mileage.trim()) {
+      const cleanKm = mileage.trim().replace(/\D/g, '');
+      const formattedKm = cleanKm ? `${Number(cleanKm).toLocaleString('it-IT')} km` : mileage.trim();
+      const kmTag = `[Km: ${formattedKm}]`;
+      if (!finalNotes.includes('[Km:')) {
+        finalNotes = finalNotes ? `${kmTag} ${finalNotes}` : kmTag;
+      }
     }
 
     setIsSubmitting(true);
@@ -412,14 +432,14 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
           arrival_date: arrivalDate || null,
           location: location || null,
           status: status || 'in_attesa',
-          notes: notes || null,
+          notes: finalNotes || null,
           photo_url: photoUrl || null,
         });
 
         if (error) {
           setFormError(error);
         } else if (data) {
-          onSuccess(data);
+          onSuccess(data, andOpenPartsExtractor);
           onClose();
         }
       } else {
@@ -441,14 +461,14 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
           arrival_date: arrivalDate || null,
           location: location || null,
           status: status || 'in_attesa',
-          notes: notes || null,
+          notes: finalNotes || null,
           photo_url: photoUrl || null,
         });
 
         if (error) {
           setFormError(error);
         } else if (data) {
-          onSuccess(data);
+          onSuccess(data, andOpenPartsExtractor);
           onClose();
         }
       }
@@ -458,6 +478,11 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSubmit(false);
   };
 
   if (!isOpen) return null;
@@ -949,11 +974,11 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
               <span>2. Dati Esemplare Fisico Autodemolizione</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {/* Anno Immatricolazione Singolo Esemplare */}
               <div>
                 <label className="text-slate-300 font-semibold block mb-1">
-                  Anno Immatricolazione Esemplare
+                  Anno Immatricolazione
                 </label>
                 <input
                   type="number"
@@ -965,6 +990,22 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                     setYear(e.target.value);
                     setConfirmYearMismatch(false);
                   }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Chilometraggio */}
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Chilometraggio (Km)
+                </label>
+                <input
+                  type="number"
+                  placeholder="Es. 145000"
+                  min="0"
+                  max="2000000"
+                  value={mileage}
+                  onChange={(e) => setMileage(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -1142,29 +1183,64 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
             >
               Annulla
             </button>
 
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
-              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-colors shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Salvataggio in corso...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isEditing ? 'Aggiorna Veicolo' : 'Salva nel Parco Auto'}</span>
-                </>
-              )}
-            </button>
+            {isEditing ? (
+              <button
+                type="button"
+                onClick={() => executeSubmit(false)}
+                disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-colors shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Salvataggio...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Aggiorna Veicolo</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => executeSubmit(false)}
+                  disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-semibold rounded text-xs flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Salva il veicolo nel parco auto senza estrarre ricambi ora"
+                >
+                  <Save className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Salva Solo Veicolo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => executeSubmit(true)}
+                  disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
+                  className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Salva il veicolo e apri subito la selezione rapida ricambi consigliati"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Salvataggio...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Salva e Recupera Ricambi →</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

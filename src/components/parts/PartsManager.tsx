@@ -278,11 +278,11 @@ export const PartsManager: React.FC = () => {
               }}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
             >
-              <option value="all">Tutti gli stati disponibilità</option>
-              <option value="available">Disponibile (Online)</option>
-              <option value="reserved">Riservato</option>
-              <option value="sold">Venduto / Esaurito</option>
-              <option value="inactive">Non attivo / Offline</option>
+              <option value="all">Tutti gli stati (Bozze & Online)</option>
+              <option value="inactive">Bozze Offline / In lavorazione</option>
+              <option value="available">Pubblicati Online (Disponibili)</option>
+              <option value="reserved">Riservati</option>
+              <option value="sold">Venduti / Esauriti</option>
             </select>
           </div>
 
@@ -439,13 +439,29 @@ export const PartsManager: React.FC = () => {
                     </td>
 
                     <td className="py-3 px-4">
-                      <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                          statusBadges[item.status]?.color || 'text-slate-300'
-                        }`}
-                      >
-                        {statusBadges[item.status]?.label || item.status}
-                      </span>
+                      {item.status === 'available' ? (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-emerald-400 bg-emerald-950/60 border-emerald-800/60">
+                          Pubblicato
+                        </span>
+                      ) : item.status === 'inactive' ? (
+                        !item.price || Number(item.price) <= 0 ? (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-amber-400 bg-amber-950/60 border-amber-800/60">
+                            Bozza Incompleta
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-sky-400 bg-sky-950/60 border-sky-800/60">
+                            Bozza Pronta
+                          </span>
+                        )
+                      ) : item.status === 'reserved' ? (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-amber-300 bg-amber-950/60 border-amber-800/60">
+                          Riservato
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-slate-400 bg-slate-900 border-slate-700">
+                          Venduto
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 text-right">

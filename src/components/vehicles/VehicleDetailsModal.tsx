@@ -29,6 +29,7 @@ interface VehicleDetailsModalProps {
   onClose: () => void;
   onEdit: (vehicle: SellerVehicle) => void;
   onDelete: (vehicle: SellerVehicle) => void;
+  onExtractParts?: (vehicle: SellerVehicle) => void;
 }
 
 export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
@@ -36,6 +37,7 @@ export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
   onClose,
   onEdit,
   onDelete,
+  onExtractParts,
 }) => {
   const [linkedPartsCount, setLinkedPartsCount] = useState<number | null>(null);
   const [isCheckingParts, setIsCheckingParts] = useState(false);
@@ -356,6 +358,20 @@ export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
           </button>
 
           <div className="flex items-center space-x-2">
+            {onExtractParts && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onExtractParts(vehicle);
+                }}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Recupera Ricambi</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -370,7 +386,7 @@ export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
                 onClose();
                 onEdit(vehicle);
               }}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold rounded text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
               <Edit2 className="w-3.5 h-3.5" />
               <span>Modifica Dati</span>
