@@ -49,9 +49,22 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     };
   }
 
-  // Recupera il token JWT di sessione per autenticare la chiamata verso il backend Netlify
-  const { data: sessionData } = await client.auth.getSession();
-  const token = sessionData.session?.access_token;
+  // 1. Assicurati che la sessione Supabase sia fresca e valida
+  let sessionData = (await client.auth.getSession()).data;
+  let token = sessionData.session?.access_token;
+
+  // Se il token è prossimo alla scadenza o assente, tenta il refresh della sessione
+  if (!token || (sessionData.session?.expires_at && sessionData.session.expires_at * 1000 - Date.now() < 60000)) {
+    try {
+      const refreshed = await client.auth.refreshSession();
+      if (refreshed.data.session) {
+        sessionData = refreshed.data;
+        token = refreshed.data.session.access_token;
+      }
+    } catch {
+      // Ignora errore refresh se fallisce
+    }
+  }
 
   if (!token) {
     return {
@@ -67,39 +80,64 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     };
   }
 
-  // Dual Check: Interrogazione diretta Supabase (seller_ebay_tokens)
+  // Dual Check: Interrogazione diretta Supabase e RPC
   let directTokenRow: any = null;
+
+  // Tentativo 1: Esecuzione RPC get_seller_ebay_status (se presente nel database)
   try {
-    // 1. Prova prima con il sellerId specifico
-    if (sellerId) {
-      const { data: dbRows, error: dbErr } = await (client as any)
-        .from('seller_ebay_tokens')
-        .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
-        .eq('seller_id', sellerId)
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1);
-
-      if (!dbErr && dbRows && dbRows.length > 0 && dbRows[0].is_active) {
-        directTokenRow = dbRows[0];
+    const { data: rpcData, error: rpcErr } = await client.rpc('get_seller_ebay_status' as any, {
+      _seller_id: sellerId || undefined,
+    });
+    if (!rpcErr && rpcData && typeof rpcData === 'object') {
+      const rpcObj = rpcData as any;
+      if (rpcObj.is_connected || rpcObj.isConnected) {
+        directTokenRow = {
+          id: rpcObj.id || 'rpc',
+          seller_id: rpcObj.seller_id || sellerId,
+          ebay_username: rpcObj.ebay_username || rpcObj.ebayUsername || 'Utente Sandbox',
+          is_active: true,
+          created_at: rpcObj.created_at || rpcObj.connectedAt || nowIso,
+          refresh_token_expires_at: rpcObj.refresh_token_expires_at || rpcObj.tokenExpiresAt || null,
+          scopes: Array.isArray(rpcObj.scopes) ? rpcObj.scopes : ['https://api.ebay.com/oauth/api_scope'],
+        };
       }
     }
+  } catch {
+    // RPC non presente nel database, si procede con le query dirette RLS
+  }
 
-    // 2. Se non trovato o sellerId non specificato, cerca qualsiasi record attivo accessibile all'utente (policy RLS)
-    if (!directTokenRow) {
-      const { data: anyRows, error: anyErr } = await (client as any)
-        .from('seller_ebay_tokens')
-        .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1);
+  // Tentativo 2: Controllo diretto tabella seller_ebay_tokens (se non già verificato da RPC)
+  if (!directTokenRow) {
+    try {
+      if (sellerId) {
+        const { data: dbRows, error: dbErr } = await (client as any)
+          .from('seller_ebay_tokens')
+          .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
+          .eq('seller_id', sellerId)
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(1);
 
-      if (!anyErr && anyRows && anyRows.length > 0 && anyRows[0].is_active) {
-        directTokenRow = anyRows[0];
+        if (!dbErr && dbRows && dbRows.length > 0 && dbRows[0].is_active) {
+          directTokenRow = dbRows[0];
+        }
       }
+
+      if (!directTokenRow) {
+        const { data: anyRows, error: anyErr } = await (client as any)
+          .from('seller_ebay_tokens')
+          .select('id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at')
+          .eq('is_active', true)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        if (!anyErr && anyRows && anyRows.length > 0 && anyRows[0].is_active) {
+          directTokenRow = anyRows[0];
+        }
+      }
+    } catch (dbErr) {
+      console.debug('[ebayService] Controllo diretto Supabase token:', dbErr);
     }
-  } catch (dbErr) {
-    console.debug('[ebayService] Controllo diretto Supabase token:', dbErr);
   }
 
   const queryParams = new URLSearchParams({

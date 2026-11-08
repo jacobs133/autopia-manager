@@ -129,13 +129,22 @@ export const EbayManager: React.FC = () => {
       setIsLoading(true);
       setActionError(null);
     }
-    const info = await fetchEbayConnectionStatus(activeSeller?.id);
-    setConnectionInfo(info);
-    if (info.isConnected) {
-      setPendingAuthUrl(null);
-      setActionNotice(null);
+    try {
+      const info = await fetchEbayConnectionStatus(activeSeller?.id);
+      setConnectionInfo(info);
+      if (info.isConnected) {
+        setPendingAuthUrl(null);
+        setActionNotice('Account eBay Sandbox collegato e attivo!');
+        setActionError(null);
+      } else if (!isSilent && info.status === 'error') {
+        setActionError(info.message || 'Errore durante la verifica del collegamento eBay.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la verifica';
+      if (!isSilent) setActionError(msg);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [activeSeller?.id]);
 
   useEffect(() => {
