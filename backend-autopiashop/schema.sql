@@ -81,6 +81,100 @@ CREATE POLICY "Sellers can view own ebay token status"
 
 COMMENT ON TABLE public.seller_ebay_tokens IS 'Credenziali e token eBay cifrati AES-256-GCM associati strettamente all autodemolitore';
 
+-- 2.1 Funzione RPC sicura per la verifica dello stato di collegamento eBay
+-- Accessibile dagli utenti autenticati senza concedere permessi diretti sulla tabella
+CREATE OR REPLACE FUNCTION public.get_seller_ebay_status(p_seller_id UUID DEFAULT NULL)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_target_seller_id UUID;
+  v_is_admin BOOLEAN := false;
+  v_token_record RECORD;
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'is_connected', false,
+      'isConnected', false,
+      'status', 'unauthenticated',
+      'message', 'Utente non autenticato'
+    );
+  END IF;
+
+  -- Verifica se l'utente possiede il ruolo admin
+  SELECT EXISTS (
+    SELECT 1 FROM auth.users WHERE id = v_user_id AND email = 'lollogamer2009@gmail.com'
+  ) OR EXISTS (
+    SELECT 1 FROM public.user_roles WHERE user_id = v_user_id AND role = 'admin'
+  ) INTO v_is_admin;
+
+  -- Se p_seller_id è fornito:
+  IF p_seller_id IS NOT NULL THEN
+    IF v_is_admin THEN
+      SELECT id INTO v_target_seller_id FROM public.seller_profiles WHERE id = p_seller_id;
+    ELSE
+      SELECT id INTO v_target_seller_id FROM public.seller_profiles WHERE id = p_seller_id AND user_id = v_user_id;
+    END IF;
+  ELSE
+    -- Se p_seller_id non è specificato, usa il profilo collegato all'utente
+    SELECT id INTO v_target_seller_id FROM public.seller_profiles WHERE user_id = v_user_id LIMIT 1;
+  END IF;
+
+  IF v_target_seller_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'is_connected', false,
+      'isConnected', false,
+      'status', 'not_found',
+      'message', 'Nessun profilo autodemolitore valido associato'
+    );
+  END IF;
+
+  -- Ricerca record token attivo (esclude colonne token cifrati per privacy)
+  SELECT id, seller_id, ebay_username, is_active, refresh_token_expires_at, scopes, created_at, updated_at
+  INTO v_token_record
+  FROM public.seller_ebay_tokens
+  WHERE seller_id = v_target_seller_id
+    AND environment ILIKE 'sandbox'
+    AND is_active = true
+  ORDER BY updated_at DESC
+  LIMIT 1;
+
+  IF v_token_record.id IS NOT NULL AND v_token_record.is_active = true THEN
+    RETURN jsonb_build_object(
+      'is_connected', true,
+      'isConnected', true,
+      'seller_id', v_target_seller_id,
+      'sellerId', v_target_seller_id,
+      'ebay_username', COALESCE(v_token_record.ebay_username, 'Utente Sandbox'),
+      'ebayUsername', COALESCE(v_token_record.ebay_username, 'Utente Sandbox'),
+      'created_at', v_token_record.created_at,
+      'connectedAt', v_token_record.created_at,
+      'refresh_token_expires_at', v_token_record.refresh_token_expires_at,
+      'tokenExpiresAt', v_token_record.refresh_token_expires_at,
+      'scopes', COALESCE(v_token_record.scopes, ARRAY['https://api.ebay.com/oauth/api_scope']::text[]),
+      'status', 'connected',
+      'message', 'Account eBay collegato con successo'
+    );
+  ELSE
+    RETURN jsonb_build_object(
+      'is_connected', false,
+      'isConnected', false,
+      'seller_id', v_target_seller_id,
+      'sellerId', v_target_seller_id,
+      'status', 'not_connected',
+      'message', 'Nessun account eBay Sandbox collegato per questo profilo'
+    );
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_seller_ebay_status(UUID) TO authenticated;
+
+
 
 -- 3. Tabella per le Inserzioni eBay (Fase 3B: Pubblicazione e Sincronizzazione Giacenze)
 CREATE TABLE IF NOT EXISTS public.ebay_listings (

@@ -80,33 +80,105 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     };
   }
 
-  // Dual Check: Interrogazione diretta Supabase e RPC
-  let directTokenRow: any = null;
+  // Recupera la chiave pubblica (anonKey) se presente per completare gli header verso Netlify
+  const supabaseConfig = (await import('./supabaseClient')).getSupabaseConfig();
+  const anonKey = supabaseConfig?.anonKey;
 
-  // Tentativo 1: Esecuzione RPC get_seller_ebay_status (se presente nel database)
+  // Dual Check: Interrogazione prioritaria tramite RPC get_seller_ebay_status (Security Definer)
+  let directTokenRow: {
+    id?: string;
+    seller_id?: string;
+    ebay_username?: string;
+    is_active?: boolean;
+    created_at?: string | null;
+    refresh_token_expires_at?: string | null;
+    scopes?: string[];
+  } | null = null;
+
+  // Tentativo 1: Esecuzione RPC get_seller_ebay_status con firma flessibile
   try {
-    const { data: rpcData, error: rpcErr } = await client.rpc('get_seller_ebay_status' as any, {
-      _seller_id: sellerId || undefined,
+    let rpcData: any = null;
+    let rpcErr: any = null;
+
+    // Prova 1: p_seller_id
+    const r1 = await client.rpc('get_seller_ebay_status' as any, {
+      p_seller_id: sellerId || undefined,
     });
-    if (!rpcErr && rpcData && typeof rpcData === 'object') {
-      const rpcObj = rpcData as any;
-      if (rpcObj.is_connected || rpcObj.isConnected) {
-        directTokenRow = {
-          id: rpcObj.id || 'rpc',
-          seller_id: rpcObj.seller_id || sellerId,
-          ebay_username: rpcObj.ebay_username || rpcObj.ebayUsername || 'Utente Sandbox',
-          is_active: true,
-          created_at: rpcObj.created_at || rpcObj.connectedAt || nowIso,
-          refresh_token_expires_at: rpcObj.refresh_token_expires_at || rpcObj.tokenExpiresAt || null,
-          scopes: Array.isArray(rpcObj.scopes) ? rpcObj.scopes : ['https://api.ebay.com/oauth/api_scope'],
-        };
+    if (!r1.error) {
+      rpcData = r1.data;
+    } else {
+      // Prova 2: _seller_id (legacy)
+      const r2 = await client.rpc('get_seller_ebay_status' as any, {
+        _seller_id: sellerId || undefined,
+      });
+      if (!r2.error) {
+        rpcData = r2.data;
+      } else {
+        // Prova 3: seller_id
+        const r3 = await client.rpc('get_seller_ebay_status' as any, {
+          seller_id: sellerId || undefined,
+        });
+        if (!r3.error) {
+          rpcData = r3.data;
+        } else {
+          // Prova 4: senza argomenti (deduzione automatica tramite auth.uid())
+          const r4 = await client.rpc('get_seller_ebay_status' as any);
+          if (!r4.error) {
+            rpcData = r4.data;
+          } else {
+            rpcErr = r4.error;
+          }
+        }
       }
     }
-  } catch {
-    // RPC non presente nel database, si procede con le query dirette RLS
+
+    if (!rpcErr && rpcData !== null && rpcData !== undefined) {
+      // Interpreta la risposta RPC: può essere un array di record, un oggetto JSONB o un booleano
+      if (Array.isArray(rpcData)) {
+        if (rpcData.length > 0) {
+          const item = rpcData[0];
+          if (item.is_active === true || item.is_connected === true || item.isConnected === true) {
+            directTokenRow = {
+              id: item.id || 'rpc',
+              seller_id: item.seller_id || item.sellerId || sellerId || undefined,
+              ebay_username: item.ebay_username || item.ebayUsername || 'Utente Sandbox',
+              is_active: true,
+              created_at: item.created_at || item.connectedAt || nowIso,
+              refresh_token_expires_at: item.refresh_token_expires_at || item.tokenExpiresAt || null,
+              scopes: Array.isArray(item.scopes) ? item.scopes : ['https://api.ebay.com/oauth/api_scope'],
+            };
+          }
+        }
+      } else if (typeof rpcData === 'boolean' && rpcData === true) {
+        directTokenRow = {
+          id: 'rpc_bool',
+          seller_id: sellerId || undefined,
+          ebay_username: 'Utente Sandbox',
+          is_active: true,
+          created_at: nowIso,
+          refresh_token_expires_at: null,
+          scopes: ['https://api.ebay.com/oauth/api_scope'],
+        };
+      } else if (typeof rpcData === 'object') {
+        const obj = rpcData as any;
+        if (obj.is_connected === true || obj.isConnected === true || obj.is_active === true || obj.status === 'connected') {
+          directTokenRow = {
+            id: obj.id || 'rpc_obj',
+            seller_id: obj.seller_id || obj.sellerId || sellerId || undefined,
+            ebay_username: obj.ebay_username || obj.ebayUsername || 'Utente Sandbox',
+            is_active: true,
+            created_at: obj.created_at || obj.connectedAt || nowIso,
+            refresh_token_expires_at: obj.refresh_token_expires_at || obj.tokenExpiresAt || null,
+            scopes: Array.isArray(obj.scopes) ? obj.scopes : ['https://api.ebay.com/oauth/api_scope'],
+          };
+        }
+      }
+    }
+  } catch (rpcEx) {
+    console.debug('[ebayService] Nota verifica RPC:', rpcEx);
   }
 
-  // Tentativo 2: Controllo diretto tabella seller_ebay_tokens (se non già verificato da RPC)
+  // Tentativo 2: Controllo tabella seller_ebay_tokens (se non già verificato da RPC)
   if (!directTokenRow) {
     try {
       if (sellerId) {
@@ -135,8 +207,8 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
           directTokenRow = anyRows[0];
         }
       }
-    } catch (dbErr) {
-      console.debug('[ebayService] Controllo diretto Supabase token:', dbErr);
+    } catch {
+      // Ignora restrizioni RLS sulla lettura diretta di seller_ebay_tokens
     }
   }
 
@@ -153,15 +225,17 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    // CRITICO: Non inviare MAI 'Cache-Control' o 'Pragma' personalizzati negli headers,
-    // poiché causano il fallimento del preflight CORS sui server Netlify.
-    // L'invalidazione cache è già garantita dal parametro '_t' nell'URL.
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+    };
+    if (anonKey) {
+      headers['apikey'] = anonKey;
+    }
+
     let res = await fetch(endpoint, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json',
-      },
+      headers,
       signal: controller.signal,
     });
 
@@ -170,9 +244,8 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
       res = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          ...headers,
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: JSON.stringify({ seller_id: sellerId || undefined }),
         signal: controller.signal,
@@ -181,7 +254,7 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
 
     clearTimeout(timeoutId);
 
-    // Se l'endpoint non è ancora deployato su Netlify (404/502/503), ma da Supabase risulta connesso
+    // Se l'endpoint non è ancora deployato su Netlify (404/502/503), ma da Supabase/RPC risulta connesso
     if (res.status === 404 || res.status === 502 || res.status === 503) {
       if (directTokenRow) {
         return {
@@ -266,7 +339,7 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
 
     const data = await res.json();
 
-    // Rileva la presenza reale del collegamento comunicata dal server o dal controllo diretto DB
+    // Rileva la presenza reale del collegamento comunicata dal server o dal controllo diretto DB/RPC
     const isConnected = Boolean(data?.isConnected) || Boolean(directTokenRow);
     const ebayUsername = data?.ebayUsername || directTokenRow?.ebay_username || (isConnected ? 'Utente Sandbox' : null);
     const connectedAt = data?.connectedAt || directTokenRow?.created_at || null;
@@ -361,8 +434,8 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
       tokenExpiresAt: null,
       scopes: [],
       lastCheckedAt: nowIso,
-      status: 'backend_not_configured',
-      message: `Impossibile raggiungere il backend OAuth (${endpoint}): ${errorMsg}. In attesa del deploy della funzione Netlify.`,
+      status: 'error',
+      message: `Impossibile raggiungere il backend OAuth (${endpoint}): ${errorMsg}.`,
     };
   }
 }
@@ -372,7 +445,7 @@ export async function fetchEbayConnectionStatus(sellerId?: string | null): Promi
  * crittograficamente sicuro e univoco.
  * Il desktop non manipola RuName o Client Secret: riceve solo l'URL ufficiale verso cui indirizzare il browser.
  */
-export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
+export async function initiateEbayOAuth(sellerId?: string | null): Promise<EbayOAuthInitResult> {
   const client = getSupabaseClient();
   if (!client) {
     return {
@@ -391,19 +464,28 @@ export async function initiateEbayOAuth(): Promise<EbayOAuthInitResult> {
     };
   }
 
+  const supabaseConfig = (await import('./supabaseClient')).getSupabaseConfig();
+  const anonKey = supabaseConfig?.anonKey;
+
   const endpoint = `${getEbayOAuthBackendBaseUrl()}/ebay-oauth-init`;
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000);
 
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (anonKey) {
+      headers['apikey'] = anonKey;
+    }
+
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers,
+      body: JSON.stringify({ seller_id: sellerId || undefined }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -990,6 +1072,35 @@ export async function runEbayIntegrationDiagnostics(): Promise<EbayDiagnosticsRe
       name: 'Tabelle Database eBay (schema.sql)',
       status: 'warning',
       message: err instanceof Error ? err.message : 'Verifica schema completata con avviso',
+    });
+  }
+
+  // 4.1 Verifica Esecuzione RPC get_seller_ebay_status
+  try {
+    const { data: rpcTest, error: rpcErr } = await client.rpc('get_seller_ebay_status' as any);
+    if (rpcErr) {
+      checks.push({
+        id: 'rpc_ebay_status',
+        name: 'Funzione RPC Database (get_seller_ebay_status)',
+        status: 'warning',
+        message: `RPC non ancora creata o accessibile nel database: ${rpcErr.message}`,
+        suggestion: 'Esegui il file backend-autopiashop/schema.sql nel SQL Editor di Supabase per attivare la RPC.',
+      });
+    } else {
+      const isConn = Boolean(rpcTest?.is_connected || rpcTest?.isConnected || rpcTest?.is_active);
+      checks.push({
+        id: 'rpc_ebay_status',
+        name: 'Funzione RPC Database (get_seller_ebay_status)',
+        status: 'ok',
+        message: `RPC operativa e funzionante (risultato: ${isConn ? 'Collegato' : 'Non collegato'}).`,
+      });
+    }
+  } catch (rpcEx) {
+    checks.push({
+      id: 'rpc_ebay_status',
+      name: 'Funzione RPC Database (get_seller_ebay_status)',
+      status: 'warning',
+      message: rpcEx instanceof Error ? rpcEx.message : 'Verifica RPC completata con avviso',
     });
   }
 

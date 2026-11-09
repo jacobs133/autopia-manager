@@ -72,7 +72,7 @@ export function getCorsHeaders(requestOrigin?: string): Record<string, string> {
 
   return {
     'Access-Control-Allow-Origin': originToSet,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept, apikey, x-client-info',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
@@ -228,7 +228,8 @@ export function decryptToken(encryptedPayload: string, keyHex: string): string {
  * 6. Anche gli amministratori devono possedere un proprio profilo seller approvato per connettere eBay.
  */
 export async function authenticateApprovedSeller(
-  authHeader?: string
+  authHeader?: string,
+  requestedSellerId?: string | null
 ): Promise<AuthenticatedSellerContext> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw new AuthenticationError('Intestazione Authorization mancante o non in formato Bearer');
@@ -251,7 +252,78 @@ export async function authenticateApprovedSeller(
 
   const user = userData.user;
 
-  // 2. Controllo del profilo autodemolitore associato STRETTAMENTE all'utente autenticato
+  // 2. Controllo del ruolo amministratore direttamente sul backend
+  const isAdminEmail = user.email?.trim().toLowerCase() === 'lollogamer2009@gmail.com';
+  let hasAdminRole = false;
+  try {
+    const { data: roleRows } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id);
+    hasAdminRole = Array.isArray(roleRows) && roleRows.some((r) => r.role === 'admin');
+  } catch {
+    // Non bloccare se la tabella user_roles non è interrogabile
+  }
+  const isPlatformAdmin = isAdminEmail || hasAdminRole;
+
+  // Se l'utente è un amministratore e ha specificato un seller_id target da gestire:
+  if (isPlatformAdmin && requestedSellerId && requestedSellerId.trim() !== '') {
+    const { data: requestedSeller, error: reqErr } = await supabase
+      .from('seller_profiles')
+      .select('id, user_id, business_name, status, city')
+      .eq('id', requestedSellerId.trim())
+      .maybeSingle();
+
+    if (reqErr) {
+      throw new DatabaseError(`Errore verifica profilo autodemolitore gestito dall'amministratore: ${reqErr.message}`);
+    }
+
+    if (!requestedSeller) {
+      throw new ForbiddenError(
+        `Nessun profilo autodemolitore trovato con l'identificativo '${requestedSellerId.trim()}'.`
+      );
+    }
+
+    if (requestedSeller.status !== 'approved') {
+      throw new ForbiddenError(
+        `Il profilo autodemolitore '${requestedSeller.business_name || requestedSeller.id}' non risulta in stato approvato (stato: ${requestedSeller.status}).`
+      );
+    }
+
+    return {
+      user,
+      seller: requestedSeller as SellerProfileRecord,
+    };
+  }
+
+  // Se è amministratore ma non ha passato requestedSellerId, cerca prima il suo profilo venditore personale
+  if (isPlatformAdmin) {
+    const { data: adminOwnSeller } = await supabase
+      .from('seller_profiles')
+      .select('id, user_id, business_name, status, city')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (adminOwnSeller && adminOwnSeller.status === 'approved') {
+      return { user, seller: adminOwnSeller as SellerProfileRecord };
+    }
+
+    // Se l'amministratore non ha un proprio seller_profile, recupera l'ultimo venditore approvato
+    const { data: latestSeller } = await supabase
+      .from('seller_profiles')
+      .select('id, user_id, business_name, status, city')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestSeller) {
+      return { user, seller: latestSeller as SellerProfileRecord };
+    }
+  }
+
+  // 3. Controllo per utente standard (Zero-Trust): controllo STRETTO per user_id = user.id
+  // Non ammette seller_id arbitrari inviati dal client per utenti non-admin
   const { data: sellerData, error: sellerError } = await supabase
     .from('seller_profiles')
     .select('id, user_id, business_name, status, city')
@@ -262,10 +334,16 @@ export async function authenticateApprovedSeller(
     throw new DatabaseError(`Errore verifica profilo autodemolitore: ${sellerError.message}`);
   }
 
-  // Nessuna associazione automatica o bypass per admin: ogni utente deve avere il suo profilo
   if (!sellerData) {
     throw new ForbiddenError(
       'Nessun profilo autodemolitore associato all\'account utente autenticato. Per collegare eBay è necessario disporre di un profilo venditore registrato.'
+    );
+  }
+
+  // Se un non-admin passa un requestedSellerId diverso dal proprio profilo, respingi la richiesta
+  if (requestedSellerId && requestedSellerId.trim() !== sellerData.id) {
+    throw new ForbiddenError(
+      'Accesso negato: l\'utente autenticato non è autorizzato a gestire il canale eBay di un altro autodemolitore.'
     );
   }
 
@@ -316,7 +394,7 @@ export async function getValidEbayAccessToken(sellerId: string): Promise<{
   accessToken: string;
   ebayUsername: string | null;
 }> {
-  const { ebayClientId, ebayClientSecret, tokenEncryptionKey } = getRequiredEnvVars();
+  const { ebayClientId, ebayClientSecret, encryptionKeyHex } = getRequiredEnvVars();
   const supabase = getSupabaseAdminClient();
 
   const { data: tokenRecord, error } = await supabase
@@ -331,7 +409,8 @@ export async function getValidEbayAccessToken(sellerId: string): Promise<{
     throw new DatabaseError(`Errore recupero credenziali eBay: ${error.message}`);
   }
 
-  if (!tokenRecord || !tokenRecord.encrypted_access_token) {
+  const accessPayload = tokenRecord?.access_token_encrypted || tokenRecord?.encrypted_access_token;
+  if (!tokenRecord || !accessPayload) {
     throw new ForbiddenError('Nessun account eBay Sandbox collegato per questo demolitore.');
   }
 
@@ -343,26 +422,17 @@ export async function getValidEbayAccessToken(sellerId: string): Promise<{
   const isExpiringSoon = expiresAt - now < 5 * 60 * 1000;
 
   if (!isExpiringSoon) {
-    const accessToken = decryptToken(
-      tokenRecord.encrypted_access_token,
-      tokenRecord.access_token_iv,
-      tokenRecord.access_token_tag,
-      tokenEncryptionKey
-    );
+    const accessToken = decryptToken(accessPayload, encryptionKeyHex);
     return { accessToken, ebayUsername: tokenRecord.ebay_username || null };
   }
 
   // Refresh token flow
-  if (!tokenRecord.encrypted_refresh_token) {
+  const refreshPayload = tokenRecord.refresh_token_encrypted || tokenRecord.encrypted_refresh_token;
+  if (!refreshPayload) {
     throw new ForbiddenError('Refresh token eBay non disponibile. Riconnetti l\'account eBay.');
   }
 
-  const refreshToken = decryptToken(
-    tokenRecord.encrypted_refresh_token,
-    tokenRecord.refresh_token_iv,
-    tokenRecord.refresh_token_tag,
-    tokenEncryptionKey
-  );
+  const refreshToken = decryptToken(refreshPayload, encryptionKeyHex);
 
   const basicAuth = Buffer.from(`${ebayClientId}:${ebayClientSecret}`).toString('base64');
   const bodyParams = new URLSearchParams({
@@ -391,27 +461,18 @@ export async function getValidEbayAccessToken(sellerId: string): Promise<{
   const expiresInSeconds = tokenData.expires_in || 7200;
   const newExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
-  // Cifra il nuovo access token
-  const encAccess = encryptToken(newAccessToken, tokenEncryptionKey);
-
-  // Aggiorna anche il refresh token se inviato uno nuovo rotante
-  let encRefresh = null;
-  if (tokenData.refresh_token) {
-    encRefresh = encryptToken(tokenData.refresh_token, tokenEncryptionKey);
-  }
+  // Cifra il nuovo access token (restituisce formato iv:tag:cipher)
+  const encAccess = encryptToken(newAccessToken, encryptionKeyHex);
 
   const updatePayload: Record<string, unknown> = {
-    encrypted_access_token: encAccess.cipherText,
-    access_token_iv: encAccess.iv,
-    access_token_tag: encAccess.tag,
+    access_token_encrypted: encAccess,
     access_token_expires_at: newExpiresAt,
     updated_at: new Date().toISOString(),
   };
 
-  if (encRefresh) {
-    updatePayload.encrypted_refresh_token = encRefresh.cipherText;
-    updatePayload.refresh_token_iv = encRefresh.iv;
-    updatePayload.refresh_token_tag = encRefresh.tag;
+  if (tokenData.refresh_token) {
+    const encRefresh = encryptToken(tokenData.refresh_token, encryptionKeyHex);
+    updatePayload.refresh_token_encrypted = encRefresh;
   }
 
   await supabase

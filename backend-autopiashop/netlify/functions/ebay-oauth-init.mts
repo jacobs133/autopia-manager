@@ -53,7 +53,19 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
     // 1. Verifica rigorosa dell'autenticazione del demolitore (Zero-Trust)
     const authHeader = event.headers.authorization || event.headers.Authorization;
-    const { user, seller } = await authenticateApprovedSeller(authHeader);
+    let requestedSellerId: string | undefined;
+    if (event.body) {
+      try {
+        const parsed = JSON.parse(event.body);
+        requestedSellerId = parsed.seller_id || parsed.sellerId;
+      } catch {
+        // Ignora parse error se non json
+      }
+    }
+    if (!requestedSellerId && event.queryStringParameters) {
+      requestedSellerId = event.queryStringParameters.seller_id || event.queryStringParameters.sellerId;
+    }
+    const { user, seller } = await authenticateApprovedSeller(authHeader, requestedSellerId);
 
     // 2. Generazione del parametro state crittograficamente sicuro (256-bit CSPRNG)
     const stateToken = crypto.randomBytes(32).toString('hex');

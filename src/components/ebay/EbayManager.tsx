@@ -134,10 +134,14 @@ export const EbayManager: React.FC = () => {
       setConnectionInfo(info);
       if (info.isConnected) {
         setPendingAuthUrl(null);
-        setActionNotice('Account eBay Sandbox collegato e attivo!');
+        setActionNotice(`Account eBay Sandbox "${info.ebayUsername || 'Collegato'}" verificato e attivo!`);
         setActionError(null);
-      } else if (!isSilent && info.status === 'error') {
-        setActionError(info.message || 'Errore durante la verifica del collegamento eBay.');
+      } else if (!isSilent) {
+        if (info.status === 'error') {
+          setActionError(info.message || 'Errore durante la verifica del collegamento eBay.');
+        } else if (info.status === 'not_connected') {
+          setActionNotice('Verifica completata: nessun account eBay Sandbox risulta collegato per questo profilo autodemolitore.');
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Errore durante la verifica';
@@ -168,18 +172,30 @@ export const EbayManager: React.FC = () => {
     };
   }, [loadStatus]);
 
-  // Polling automatico dello stato (ogni 2s) mentre l'utente è sul browser eBay ad autorizzare
+  // Polling automatico dello stato (singolo timer controllato, ogni 2.5s) mentre l'utente è sul browser eBay
   useEffect(() => {
     if (!pendingAuthUrl || connectionInfo?.isConnected) return;
 
+    let checks = 0;
+    const maxChecks = 120; // 5 minuti max
     const timer = setInterval(async () => {
-      const status = await fetchEbayConnectionStatus(activeSeller?.id);
-      if (status.isConnected || status.status === 'connected') {
-        setConnectionInfo(status);
-        setPendingAuthUrl(null);
-        setActionNotice('Account eBay Sandbox rilevato e collegato con successo!');
+      checks++;
+      try {
+        const status = await fetchEbayConnectionStatus(activeSeller?.id);
+        if (status.isConnected || status.status === 'connected') {
+          clearInterval(timer);
+          setConnectionInfo(status);
+          setPendingAuthUrl(null);
+          setActionNotice('Account eBay Sandbox rilevato e collegato con successo!');
+          setActionError(null);
+        }
+      } catch {
+        // Ignora errori di rete transitori durante il polling
       }
-    }, 2000);
+      if (checks >= maxChecks) {
+        clearInterval(timer);
+      }
+    }, 2500);
 
     return () => clearInterval(timer);
   }, [pendingAuthUrl, connectionInfo?.isConnected, activeSeller?.id]);
@@ -234,7 +250,7 @@ export const EbayManager: React.FC = () => {
     setIsInitiating(true);
 
     try {
-      const res = await initiateEbayOAuth();
+      const res = await initiateEbayOAuth(activeSeller?.id);
 
       if (!res.success) {
         setActionError(res.error || 'Impossibile avviare il collegamento con eBay Sandbox.');
@@ -255,23 +271,6 @@ export const EbayManager: React.FC = () => {
             'Il popup automatico è stato bloccato dal sistema. Fai clic sul pulsante arancione "Apri eBay Sandbox" qui sotto per procedere.'
           );
         }
-
-        // Controllo periodico automatico dello stato per rilevare l'avvenuto collegamento
-        let checks = 0;
-        const interval = setInterval(async () => {
-          checks++;
-          const status = await fetchEbayConnectionStatus(activeSeller?.id);
-          if (status.isConnected || status.status === 'connected') {
-            clearInterval(interval);
-            setPendingAuthUrl(null);
-            setConnectionInfo(status);
-            setActionNotice('Account eBay Sandbox collegato e autorizzato con successo!');
-            await loadStatus(false);
-          }
-          if (checks >= 120) {
-            clearInterval(interval); // Timeout dopo 5 minuti
-          }
-        }, 2000);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Eccezione imprevista durante l\'avvio di OAuth';
@@ -589,8 +588,14 @@ export const EbayManager: React.FC = () => {
               <div className="flex items-start space-x-4">
                 <div
                   className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border ${
-                    isConnected
+                    isLoading
+                      ? 'bg-slate-950 border-amber-500/30 text-amber-400'
+                      : isConnected
                       ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-400'
+                      : pendingAuthUrl
+                      ? 'bg-amber-950/40 border-amber-500/50 text-amber-400'
+                      : connectionInfo?.status === 'error'
+                      ? 'bg-red-950/30 border-red-800/50 text-red-400'
                       : connectionInfo?.status === 'backend_not_configured'
                       ? 'bg-amber-950/40 border-amber-800/50 text-amber-400'
                       : 'bg-slate-950 border-slate-800 text-slate-500'
@@ -600,6 +605,10 @@ export const EbayManager: React.FC = () => {
                     <Loader2 className="w-7 h-7 animate-spin text-amber-400" />
                   ) : isConnected ? (
                     <CheckCircle2 className="w-7 h-7" />
+                  ) : pendingAuthUrl ? (
+                    <Sparkles className="w-7 h-7 text-amber-400 animate-pulse" />
+                  ) : connectionInfo?.status === 'error' ? (
+                    <AlertTriangle className="w-7 h-7 text-amber-400" />
                   ) : (
                     <Globe className="w-7 h-7" />
                   )}
@@ -608,22 +617,51 @@ export const EbayManager: React.FC = () => {
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
                     <h2 className="text-lg font-bold text-slate-100">
-                      {isConnected ? 'Account eBay Sandbox Collegato' : 'Collega Account eBay Sandbox'}
+                      {isLoading
+                        ? 'Verifica Canale eBay in corso...'
+                        : isConnected
+                        ? 'Account eBay Sandbox Collegato'
+                        : pendingAuthUrl
+                        ? 'Autorizzazione eBay Sandbox in corso'
+                        : connectionInfo?.status === 'error'
+                        ? 'Stato Collegamento non verificabile'
+                        : 'Collega Account eBay Sandbox'}
                     </h2>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        isConnected
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/80'
-                          : 'bg-slate-950 text-slate-400 border border-slate-800'
-                      }`}
-                    >
-                      {isConnected ? 'Attivo & Autorizzato' : 'Disconnesso'}
-                    </span>
+                    {isLoading ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-900 text-amber-300 border border-amber-500/30 flex items-center space-x-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-400" />
+                        <span>Verifica in corso...</span>
+                      </span>
+                    ) : isConnected ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-950 text-emerald-300 border border-emerald-800/80">
+                        Attivo & Autorizzato
+                      </span>
+                    ) : pendingAuthUrl ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-950 text-amber-300 border border-amber-600/60 animate-pulse">
+                        In attesa di autorizzazione
+                      </span>
+                    ) : connectionInfo?.status === 'error' ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-950/70 text-red-300 border border-red-700/60">
+                        Errore di Verifica
+                      </span>
+                    ) : connectionInfo?.status === 'backend_not_configured' ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-950/50 text-amber-300 border border-amber-700/50">
+                        Configurazione Backend
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-950 text-slate-400 border border-slate-800">
+                        Disconnesso
+                      </span>
+                    )}
                   </div>
 
                   <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
                     {isConnected
                       ? `L'account eBay Sandbox '${connectionInfo?.ebayUsername || 'Autodemolitore'}' è regolarmente autorizzato con token di sicurezza cifrato AES-256-GCM. Puoi pubblicare inserzioni e ricevere ordini.`
+                      : pendingAuthUrl
+                      ? 'Sessione di autenticazione aperta nel browser esterno. Completa l\'accesso su eBay Sandbox e concedi i consensi. Autopia Manager aggiornerà automaticamente lo stato.'
+                      : connectionInfo?.status === 'error'
+                      ? `Verifica non riuscita: ${connectionInfo?.message || 'Impossibile verificare lo stato con il backend.'} Clicca su "Diagnostica Canale" per maggiori dettagli.`
                       : 'Autorizza Autopia Manager a sincronizzare annunci, giacenze magazzino e ordini con eBay Sandbox tramite il flusso sicuro OAuth 2.0.'}
                   </p>
 

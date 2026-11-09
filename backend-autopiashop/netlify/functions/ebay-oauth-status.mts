@@ -41,13 +41,13 @@ export const handler: Handler = async (event: HandlerEvent) => {
 
     // 1. Verifica autenticazione e seller_profile approvato (Zero-Trust)
     const authHeader = event.headers.authorization || event.headers.Authorization;
-    const { seller } = await authenticateApprovedSeller(authHeader);
+    const querySellerId = event.queryStringParameters?.seller_id || event.queryStringParameters?.sellerId;
+    const { seller } = await authenticateApprovedSeller(authHeader, querySellerId);
 
     // 2. Lettura dello stato di connessione per il demolitore autenticato (Isolamento Totale)
     // Non vengono MAI selezionate le colonne contenenti i token cifrati
     // Usiamo order('updated_at', { ascending: false }).limit(1) per evitare errori PGRST116 se esistono più record storici
-    const querySellerId = event.queryStringParameters?.seller_id || event.queryStringParameters?.sellerId;
-    const targetSellerId = (querySellerId && querySellerId.trim() === seller.id) ? seller.id : seller.id;
+    const targetSellerId = seller.id;
 
     const { data: tokenRows, error: tokenError } = await supabase
       .from('seller_ebay_tokens')
