@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './supabaseClient';
+import { ADMIN_EMAIL } from './partsService';
 import type {
   EbayConnectionInfo,
   EbayOAuthInitResult,
@@ -992,6 +993,38 @@ export async function runEbayIntegrationDiagnostics(): Promise<EbayDiagnosticsRe
       status: 'error',
       message: err instanceof Error ? err.message : 'Errore verifica sessione',
     });
+  }
+
+  // 2.1 Verifica Esclusiva Ruolo Amministratore (Diagnostica riservata unicamente all'admin)
+  let isAdmin = false;
+  if (userId) {
+    try {
+      const { data: roleRows } = await client
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin');
+      if (roleRows && roleRows.length > 0) {
+        isAdmin = true;
+      } else if (userEmail && userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        isAdmin = true;
+      }
+    } catch {
+      if (userEmail && userEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        isAdmin = true;
+      }
+    }
+  }
+
+  if (!isAdmin) {
+    checks.push({
+      id: 'admin_authorization',
+      name: 'Autorizzazione Diagnostica Avanzata',
+      status: 'error',
+      message: 'Accesso negato: la diagnostica del canale eBay è riservata esclusivamente all\'amministratore di sistema.',
+      suggestion: 'Funzionalità protetta per motivi di sicurezza dell\'infrastruttura. Solo l\'amministratore può eseguire la diagnostica.',
+    });
+    return { timestamp: new Date().toISOString(), checks, allPassed: false };
   }
 
   // 3. Verifica Profilo Venditore (seller_profiles)

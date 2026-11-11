@@ -82,6 +82,7 @@ export const EbayManager: React.FC = () => {
   const [pendingAuthUrl, setPendingAuthUrl] = useState<string | null>(null);
 
   const handleRunDiagnostics = async () => {
+    if (!isAdmin) return;
     setIsDiagnosing(true);
     setShowDiagnosticsModal(true);
     try {
@@ -414,20 +415,22 @@ export const EbayManager: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 self-start md:self-auto">
-          <button
-            type="button"
-            onClick={handleRunDiagnostics}
-            disabled={isDiagnosing}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            title="Esegui diagnostica completa end-to-end"
-          >
-            {isDiagnosing ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-            ) : (
-              <Wrench className="w-3.5 h-3.5 text-amber-400" />
-            )}
-            <span>Diagnostica Canale</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleRunDiagnostics}
+              disabled={isDiagnosing}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Esegui diagnostica completa end-to-end (Riservato Admin)"
+            >
+              {isDiagnosing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              ) : (
+                <Wrench className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span>Diagnostica Canale</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -661,7 +664,7 @@ export const EbayManager: React.FC = () => {
                       : pendingAuthUrl
                       ? 'Sessione di autenticazione aperta nel browser esterno. Completa l\'accesso su eBay Sandbox e concedi i consensi. Autopia Manager aggiornerà automaticamente lo stato.'
                       : connectionInfo?.status === 'error'
-                      ? `Verifica non riuscita: ${connectionInfo?.message || 'Impossibile verificare lo stato con il backend.'} Clicca su "Diagnostica Canale" per maggiori dettagli.`
+                      ? `Verifica non riuscita: ${connectionInfo?.message || 'Impossibile verificare lo stato con il backend.'}${isAdmin ? ' Clicca su "Diagnostica Canale" per maggiori dettagli.' : ''}`
                       : 'Autorizza Autopia Manager a sincronizzare annunci, giacenze magazzino e ordini con eBay Sandbox tramite il flusso sicuro OAuth 2.0.'}
                   </p>
 
@@ -1287,8 +1290,8 @@ export const EbayManager: React.FC = () => {
         </div>
       )}
 
-      {/* Modale Diagnostica Completa Canale eBay */}
-      {showDiagnosticsModal && (
+      {/* Modale Diagnostica Completa Canale eBay (Riservata Esclusivamente all'Admin) */}
+      {showDiagnosticsModal && isAdmin && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header Modale */}
