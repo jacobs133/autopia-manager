@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBQzZCRUI5MkZCREUxOTkKUldTWjRiMHZ1YjdHbWxVZVNNZS93dzFQcGNobWYySjNlTXk2UkZzbUsvTjVjYTg2c0RvTjQ4MksK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4RkQyMTYyNEMzNUVCOEYKUldTUDZ6Vk1ZaUg5Q0t5RlFnU1NGMDlYM3F2OURQU25waURTM3k3aCtpSVNXZVZxSUZ4WE41Rm4K",
       "endpoints": [
         "https://autopiashop.it/.netlify/functions/app-version",
         "https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json"
