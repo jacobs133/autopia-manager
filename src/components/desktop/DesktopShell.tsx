@@ -45,7 +45,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     availableSellers,
     logout,
   } = useAuth();
-  const { currentVersion, updateAvailable, openUpdateModal } = useUpdate();
+  const { currentVersion, updateAvailable, isChecking, checkForUpdates, openUpdateModal } = useUpdate();
 
   const getSectionTitle = (sec: DesktopSection) => {
     switch (sec) {
@@ -292,7 +292,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                 {/* Controllo Aggiornamenti Software - Accessibile a TUTTI gli utenti */}
                 <button
                   type="button"
-                  onClick={openUpdateModal}
+                  onClick={() => checkForUpdates(true)}
                   className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-xs flex items-center justify-between transition-colors cursor-pointer"
                   title="Verifica se sono disponibili nuove versioni"
                 >
@@ -341,15 +341,19 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
 
                 <button
                   type="button"
-                  onClick={openUpdateModal}
-                  className="w-full mt-2 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-[11px] flex items-center justify-between transition-colors cursor-pointer"
-                  title="Verifica aggiornamenti"
+                  onClick={() => checkForUpdates(true)}
+                  disabled={isChecking}
+                  className="w-full mt-2 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-[11px] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-60"
+                  title="Verifica aggiornamenti disponibili"
                 >
                   <span className="flex items-center space-x-1.5">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Aggiornamenti</span>
+                    <Sparkles className={`w-3 h-3 ${updateAvailable ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`} />
+                    <span>Verifica Aggiornamenti</span>
+                    {updateAvailable && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    )}
                   </span>
-                  <span className="font-mono text-[9px] text-slate-500 bg-slate-950 px-1 py-0.2 rounded border border-slate-800">
+                  <span className="font-mono text-[9px] text-slate-400 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">
                     v{currentVersion}
                   </span>
                 </button>

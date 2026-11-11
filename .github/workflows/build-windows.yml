@@ -39,25 +39,12 @@ jobs:
           npm install -g npm@latest
           npm install
 
-      - name: 4.1 Configurazione chiave di firma per updater
-        id: check-signing
-        shell: bash
-        run: |
-          FALLBACK_KEY="dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5QmhocGMyZXRiTlJya0g0Wk5uVXBwMk9iV0crMHloaHJHbkVYK3d2KzRyOEFBQkFBQUFBQUFBQUFBQUlBQUFBQU1sdUR0ckRQMjREUXZnR1AvVHhwS2F1dUs5cmJINmY4RWpJQWpSU1p1dTV4QXBScnd1aG8vLytSMDNRRHpIZUZ5ZkNGZFlaUy8xVkQwakk3RkkwMUFWR3ZPbHlCQi9QUERmR3RSN05GMFZPOU1yN29rZkNyeXBVcE9MSHFRc0wzeGxoZHhIWStIL1k9Cg=="
-          USER_KEY="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          ACTIVE_KEY="${USER_KEY:-$FALLBACK_KEY}"
-
-          echo "TAURI_SIGNING_PRIVATE_KEY=$ACTIVE_KEY" >> $GITHUB_ENV
-          echo "SIGN_KEY=$ACTIVE_KEY" >> $GITHUB_ENV
-          echo "SIGN_ARGS=" >> $GITHUB_ENV
-          echo "Chiave crittografica di firma Minisign configurata con successo per la generazione del manifest updater firmato."
-
-      - name: 5. Compilazione del frontend e dell'applicazione Tauri (Installer Windows)
+      - name: 5. Compilazione del frontend e dell'applicazione Tauri (Installer Windows & Updater Artifacts)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGN_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         with:
@@ -66,9 +53,8 @@ jobs:
           releaseBody: "Release ufficiale per Windows (Autopia Manager - Gestionale Autodemolizioni)"
           releaseDraft: false
           prerelease: false
-          args: ${{ env.SIGN_ARGS }}
 
-      - name: 5.1 Genera, firma crittograficamente e pubblica latest.json e setup standardizzato nella release
+      - name: 5.1 Verifica e pubblicazione artefatti di installazione e manifest latest.json
         if: success()
         shell: bash
         env:
@@ -76,61 +62,31 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v$VERSION"
-          echo "Generazione manifest latest.json firmato per la release $TAG..."
+          echo "Verifica asset e manifest latest.json per la release $TAG..."
 
-          # Assicura che la release esista prima di caricare gli asset
-          gh release view "$TAG" || gh release create "$TAG" --title "Autopia Manager $TAG" --notes "Release ufficiale Autopia Manager $TAG per Windows"
+          # Assicura che la release esista, sia associata al commit corrente e sia contrassegnata come LATEST
+          gh release view "$TAG" || gh release create "$TAG" --target "$GITHUB_SHA" --title "Autopia Manager $TAG" --notes "Release ufficiale Autopia Manager $TAG per Windows" --latest
 
-          # Trova l'installer NSIS generato e crea la copia standardizzata Autopia-Manager-Setup.exe
+          # Imposta esplicitamente questa release come LATEST assoluta su GitHub (sostituendo v0.3.8)
+          gh release edit "$TAG" --latest --draft=false || true
+
+          # Trova l'installer NSIS generato e crea la copia standardizzata Autopia-Manager-Setup.exe per download diretto se richiesto
           SETUP_EXE=$(find src-tauri/target/release/bundle/nsis/ -name "*.exe" 2>/dev/null | head -n 1)
-          SIGNATURE=""
-
           if [ -n "$SETUP_EXE" ] && [ -f "$SETUP_EXE" ]; then
             echo "Trovato installer NSIS: $SETUP_EXE"
             cp "$SETUP_EXE" Autopia-Manager-Setup.exe
-
-            # Firma crittograficamente l'installer con Minisign per consentire la verifica dell'updater
-            if [ -n "$SIGN_KEY" ]; then
-              echo "Firma digitale di Autopia-Manager-Setup.exe con chiave privata Minisign..."
-              npx tauri signer sign -k "$SIGN_KEY" -p "" Autopia-Manager-Setup.exe --app-version "$VERSION" || echo "Firma fallita, proseguimento senza firma rigida"
-              if [ -f "Autopia-Manager-Setup.exe.sig" ]; then
-                SIGNATURE=$(cat Autopia-Manager-Setup.exe.sig)
-                echo "Firma generata con successo!"
-                gh release upload "$TAG" Autopia-Manager-Setup.exe.sig --clobber || true
-              fi
-            fi
-
-            gh release upload "$TAG" Autopia-Manager-Setup.exe --clobber || echo "Upload Autopia-Manager-Setup.exe completato o saltato"
+            gh release upload "$TAG" Autopia-Manager-Setup.exe --clobber || true
           fi
 
-          # Se la firma non è stata generata sopra, controlla se tauri-action ha generato un file .sig nel bundle
-          if [ -z "$SIGNATURE" ]; then
-            SIG_FILE=$(find src-tauri/target/release/bundle/ -name "*.sig" 2>/dev/null | head -n 1)
-            if [ -n "$SIG_FILE" ] && [ -f "$SIG_FILE" ]; then
-              SIGNATURE=$(cat "$SIG_FILE")
-            fi
+          # Se tauri-action ha generato latest.json, assicuriamoci che sia presente nella release
+          LATEST_JSON=$(find src-tauri/target/release/bundle/ -name "latest.json" 2>/dev/null | head -n 1)
+          if [ -n "$LATEST_JSON" ] && [ -f "$LATEST_JSON" ]; then
+            echo "Trovato latest.json generato ufficialmente da Tauri: $LATEST_JSON"
+            cat "$LATEST_JSON"
+            gh release upload "$TAG" "$LATEST_JSON" --clobber || true
+          else
+            echo "Nota: latest.json gestito automaticamente da tauri-action."
           fi
-
-          # Crea il file manifest latest.json compatibile con Tauri v2 con firma digitale valida
-          cat << EOF > latest.json
-          {
-            "version": "$VERSION",
-            "notes": "Release ufficiale Autopia Manager v$VERSION per Windows (eBay integration e diagnostica canale)",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "$SIGNATURE",
-                "url": "https://github.com/jacobs133/autopia-manager/releases/download/$TAG/Autopia-Manager-Setup.exe"
-              },
-              "windows-i686": {
-                "signature": "$SIGNATURE",
-                "url": "https://github.com/jacobs133/autopia-manager/releases/download/$TAG/Autopia-Manager-Setup.exe"
-              }
-            }
-          }
-          EOF
-
-          gh release upload "$TAG" latest.json --clobber || echo "Upload latest.json completato o saltato"
 
       - name: 6. Caricamento degli installer generati (MSI ed EXE per Windows)
         uses: actions/upload-artifact@v4

@@ -86,8 +86,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           <>
             <button
               type="button"
-              onClick={startInstall}
+              onClick={openUpdateModal}
               className="flex items-center space-x-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 font-medium transition-colors cursor-pointer text-[10px]"
+              title="Visualizza dettagli aggiornamento"
             >
               <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
               <span>Nuova v{updateInfo?.version} disponibile</span>

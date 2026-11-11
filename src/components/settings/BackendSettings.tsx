@@ -48,6 +48,12 @@ export const BackendSettings: React.FC = () => {
     startInstall,
     relaunch,
     isTauri,
+    autoCheckEnabled,
+    checkIntervalHours,
+    setAutoCheckEnabled,
+    setCheckIntervalHoursPreference,
+    postponeUpdate,
+    openUpdateModal,
   } = useUpdate();
 
   // Controllo di sicurezza: accessibile ESCLUSIVAMENTE all'amministratore master
@@ -531,10 +537,10 @@ export const BackendSettings: React.FC = () => {
             <DownloadCloud className="w-5 h-5 text-blue-400" />
             <div>
               <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                Aggiornamenti & Versionamento Software (Tauri v2 Updater)
+                Aggiornamenti Software In-App (Tauri v2 Updater)
               </h2>
               <p className="text-[11px] text-slate-400">
-                Sistema crittografico ufficiale per il rilascio e la ricezione di nuove versioni Windows desktop.
+                Sistema integrato per download, verifica crittografica Minisign Ed25519 e installazione senza uscire dal gestionale.
               </p>
             </div>
           </div>
@@ -544,19 +550,8 @@ export const BackendSettings: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300">
-          <div className="bg-slate-950 p-3.5 rounded border border-slate-800 space-y-2">
-            <div className="text-[11px] font-bold text-slate-200 flex items-center space-x-1.5">
-              <span>Canale di Distribuzione</span>
-            </div>
-            <div className="font-mono text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 break-all select-all">
-              https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Le nuove release Windows vengono firmate crittograficamente con chiave privata Minisign (Ed25519) prima di essere pubblicate su GitHub Releases.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3.5 rounded border border-slate-800 space-y-2 flex flex-col justify-between">
+          {/* Card 1: Stato Aggiornamenti & Azioni */}
+          <div className="bg-slate-950 p-3.5 rounded border border-slate-800 space-y-3 flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="text-[11px] font-bold text-slate-200">
                 Stato Aggiornamenti
@@ -565,7 +560,7 @@ export const BackendSettings: React.FC = () => {
                 <div className="bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 p-2.5 rounded text-[11px] space-y-1">
                   <div className="font-bold flex items-center space-x-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Nuova versione v{updateInfo.version} disponibile!</span>
+                    <span>Nuova versione v{updateInfo.version} pronta per l'installazione!</span>
                   </div>
                   {updateInfo.releaseNotes && (
                     <div className="text-[10px] text-slate-300 italic line-clamp-2">
@@ -576,11 +571,11 @@ export const BackendSettings: React.FC = () => {
               ) : progress.status === 'ERROR' ? (
                 <div className="bg-amber-950/40 border border-amber-800/60 text-amber-300 p-2.5 rounded text-[11px] space-y-1">
                   <div className="font-bold flex items-center space-x-1.5 text-amber-400">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>Nessun aggiornamento pendente trovato</span>
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Stato Controllo</span>
                   </div>
                   <div className="text-[10px] text-slate-300 leading-relaxed">
-                    L'applicazione è allineata con la versione corrente (v{currentVersion}).
+                    {progress.errorMessage || 'Autopia Manager è allineato con la versione corrente.'}
                   </div>
                 </div>
               ) : (
@@ -591,11 +586,12 @@ export const BackendSettings: React.FC = () => {
               )}
             </div>
 
-            <div className="flex items-center space-x-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => checkForUpdates(true)}
                 disabled={isChecking || progress.status === 'DOWNLOADING' || progress.status === 'INSTALLING'}
-                className="flex-1 flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded text-xs transition"
+                className="flex-1 flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded text-xs transition cursor-pointer"
               >
                 {isChecking ? (
                   <>
@@ -605,30 +601,84 @@ export const BackendSettings: React.FC = () => {
                 ) : (
                   <>
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Verifica Nuova Versione</span>
+                    <span>Controlla Aggiornamenti</span>
                   </>
                 )}
               </button>
 
-              {updateAvailable && progress.status === 'IDLE' && (
-                <button
-                  onClick={startInstall}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-1.5 px-3 rounded text-xs transition flex items-center space-x-1"
-                >
-                  <DownloadCloud className="w-3.5 h-3.5" />
-                  <span>Scarica e Installa</span>
-                </button>
+              {updateAvailable && (
+                <>
+                  <button
+                    type="button"
+                    onClick={startInstall}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded text-xs transition flex items-center space-x-1 cursor-pointer shadow-md shadow-emerald-600/20"
+                  >
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>Aggiorna Ora</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={postponeUpdate}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 px-2.5 rounded text-xs transition cursor-pointer"
+                    title="Nascondi la notifica e ricorda più tardi"
+                  >
+                    <span>Rimanda</span>
+                  </button>
+                </>
               )}
 
               {progress.status === 'READY_TO_RELAUNCH' && (
                 <button
+                  type="button"
                   onClick={relaunch}
-                  className="bg-purple-600 hover:bg-purple-500 text-white font-medium py-1.5 px-3 rounded text-xs transition flex items-center space-x-1 animate-pulse"
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 px-3 rounded text-xs transition flex items-center space-x-1 animate-pulse cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Riavvia Ora</span>
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Card 2: Preferenze di Aggiornamento Automatico */}
+          <div className="bg-slate-950 p-3.5 rounded border border-slate-800 space-y-3">
+            <div className="text-[11px] font-bold text-slate-200">
+              Preferenze di Controllo Automatico
+            </div>
+
+            <label className="flex items-start space-x-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoCheckEnabled}
+                onChange={(e) => setAutoCheckEnabled(e.target.checked)}
+                className="mt-0.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-slate-950"
+              />
+              <span className="text-[11px] text-slate-300 leading-snug">
+                Verifica automaticamente nuovi aggiornamenti all'avvio del gestionale e periodicamente in background.
+              </span>
+            </label>
+
+            {autoCheckEnabled && (
+              <div className="pt-1 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">Frequenza controllo:</span>
+                <select
+                  value={checkIntervalHours}
+                  onChange={(e) => setCheckIntervalHoursPreference(Number(e.target.value))}
+                  className="bg-slate-900 border border-slate-800 text-slate-200 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                >
+                  <option value={2}>Ogni 2 ore</option>
+                  <option value={4}>Ogni 4 ore (consigliato)</option>
+                  <option value={12}>Ogni 12 ore</option>
+                  <option value={24}>Una volta al giorno</option>
+                </select>
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-1">
+              <div>Canale Endpoint: <span className="font-mono text-slate-500">GitHub Releases latest.json</span></div>
+              <div>Firma: <span className="font-mono text-emerald-400">Minisign Ed25519 Verified</span></div>
+              <div>Modalità installazione Windows: <span className="font-mono text-blue-400">Passive (senza interazione manuale)</span></div>
             </div>
           </div>
         </div>

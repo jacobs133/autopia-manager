@@ -1,13 +1,10 @@
 import type { Update } from '@tauri-apps/plugin-updater';
-import { openExternalUrl } from './externalLinkService';
 
 export interface AppUpdateInfo {
   version: string;
   currentVersion: string;
   releaseNotes?: string;
   releaseDate?: string;
-  downloadUrl?: string;
-  releaseUrl?: string;
   rawUpdate?: Update | null;
 }
 
@@ -26,15 +23,19 @@ export interface UpdateProgress {
   percentage: number;
   downloadedBytes: number;
   totalBytes: number;
+  stepMessage?: string;
   errorMessage?: string;
 }
 
-const LAST_CHECK_KEY = 'autopia_last_update_check_timestamp';
-const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 ore
+const STORAGE_KEYS = {
+  LAST_CHECK: 'autopia_last_update_check_timestamp',
+  AUTO_CHECK: 'autopia_updater_auto_check_enabled',
+  INTERVAL_HOURS: 'autopia_updater_interval_hours',
+  POSTPONED_VERSION: 'autopia_updater_postponed_version',
+};
 
 /**
- * Rileva se l'applicazione sta girando all'interno dell'ambiente desktop Tauri compilato
- * oppure nell'ambiente web browser / dev server.
+ * Rileva se l'applicazione sta girando all'interno dell'ambiente desktop nativo Tauri compilato.
  */
 export function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
@@ -43,11 +44,11 @@ export function isTauriEnvironment(): boolean {
 /**
  * Versione predefinita dell'applicazione definita nel client.
  */
-export const APP_CURRENT_VERSION = '0.3.8';
+export const APP_CURRENT_VERSION = '0.3.9';
 let cachedAppVersion = APP_CURRENT_VERSION;
 
 /**
- * Recupera la versione reale in esecuzione (tramite @tauri-apps/api/app se su desktop).
+ * Recupera la versione reale in esecuzione (tramite @tauri-apps/api/app se su desktop Windows).
  */
 export async function getRuntimeAppVersion(): Promise<string> {
   if (isTauriEnvironment()) {
@@ -58,19 +59,84 @@ export async function getRuntimeAppVersion(): Promise<string> {
         cachedAppVersion = v;
       }
     } catch {
-      // Fallback alla versione statica
+      // Fallback alla versione statica configurata
     }
   }
   return cachedAppVersion;
 }
 
 /**
+ * Gestione delle preferenze dell'utente per gli aggiornamenti automatici.
+ */
+export function getAutoCheckPreference(): boolean {
+  const val = localStorage.getItem(STORAGE_KEYS.AUTO_CHECK);
+  return val === null ? true : val === 'true';
+}
+
+export function setAutoCheckPreference(enabled: boolean): void {
+  localStorage.setItem(STORAGE_KEYS.AUTO_CHECK, String(enabled));
+}
+
+export function getCheckIntervalHours(): number {
+  const val = localStorage.getItem(STORAGE_KEYS.INTERVAL_HOURS);
+  const parsed = val ? parseInt(val, 10) : 4;
+  return Number.isNaN(parsed) || parsed < 1 ? 4 : parsed;
+}
+
+export function setCheckIntervalHours(hours: number): void {
+  localStorage.setItem(STORAGE_KEYS.INTERVAL_HOURS, String(hours));
+}
+
+export function getPostponedVersion(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.POSTPONED_VERSION);
+}
+
+export function setPostponedVersion(version: string | null): void {
+  if (version) {
+    localStorage.setItem(STORAGE_KEYS.POSTPONED_VERSION, version);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.POSTPONED_VERSION);
+  }
+}
+
+export function getLastCheckTimestamp(): number {
+  const str = localStorage.getItem(STORAGE_KEYS.LAST_CHECK);
+  return str ? parseInt(str, 10) || 0 : 0;
+}
+
+/**
+ * Traduzione amichevole degli errori nativi in messaggi chiari in italiano per l'utente.
+ */
+function translateUpdaterError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+
+  if (lower.includes('network') || lower.includes('connection') || lower.includes('failed to fetch') || lower.includes('dns') || lower.includes('timeout')) {
+    return 'Connessione al server degli aggiornamenti non riuscita. Verifica che il computer sia connesso a Internet.';
+  }
+  if (lower.includes('signature') || lower.includes('verification') || lower.includes('minisign') || lower.includes('pubkey')) {
+    return 'Firma crittografica dell\'aggiornamento non valida o pacchetto non autorizzato. L\'installazione è stata bloccata per la sicurezza del gestionale.';
+  }
+  if (lower.includes('permission') || lower.includes('access is denied') || lower.includes('os error 5')) {
+    return 'Permessi di sistema Windows insufficienti per applicare l\'aggiornamento. Assicurati che l\'utente abbia i permessi necessari o esegui il programma come Amministratore.';
+  }
+  if (lower.includes('404') || lower.includes('not found')) {
+    return 'Server degli aggiornamenti raggiungibile ma nessun manifesto di versione rilasciato.';
+  }
+  if (lower.includes('corrupt') || lower.includes('checksum') || lower.includes('archive')) {
+    return 'Il pacchetto scaricato risulta corrotto o incompleto. Riprova il download.';
+  }
+  return `Errore durante l'operazione di aggiornamento: ${msg}`;
+}
+
+/**
  * Verifica la disponibilità di una nuova versione di Autopia Manager interrogando
- * in sequenza tutti i canali ufficiali:
- * 1. Plugin nativo Tauri v2 Updater (convalida crittografica se disponibile)
- * 2. Netlify Functions (https://autopiashop.it/.netlify/functions/app-version)
- * 3. GitHub Releases API (https://api.github.com/repos/jacobs133/autopia-manager/releases/latest)
- * 4. Manifest raw su GitHub repository
+ * direttamente il sistema ufficiale Tauri v2 Updater.
+ *
+ * Se in ambiente desktop Tauri:
+ * - Interroga l'endpoint configurato in tauri.conf.json (GitHub Releases latest.json)
+ * - Verifica l'integrità e la firma crittografica con la chiave pubblica registrata
+ * - Non reindirizza MAI a browser o pagine esterne
  */
 export async function checkForAppUpdate(options?: {
   force?: boolean;
@@ -80,18 +146,23 @@ export async function checkForAppUpdate(options?: {
   error: string | null;
 }> {
   const now = Date.now();
-  const lastCheckStr = localStorage.getItem(LAST_CHECK_KEY);
-  const lastCheck = lastCheckStr ? parseInt(lastCheckStr, 10) : 0;
+  const lastCheck = getLastCheckTimestamp();
+  const intervalMs = getCheckIntervalHours() * 60 * 60 * 1000;
 
-  if (!options?.force && now - lastCheck < AUTO_CHECK_INTERVAL_MS) {
-    return { updateAvailable: false, updateInfo: null, error: null };
+  // Se è un controllo automatico in background, rispetta preferenze e intervallo temporale
+  if (!options?.force) {
+    if (!getAutoCheckPreference()) {
+      return { updateAvailable: false, updateInfo: null, error: null };
+    }
+    if (now - lastCheck < intervalMs) {
+      return { updateAvailable: false, updateInfo: null, error: null };
+    }
   }
 
-  localStorage.setItem(LAST_CHECK_KEY, now.toString());
+  localStorage.setItem(STORAGE_KEYS.LAST_CHECK, now.toString());
   const currentAppVer = await getRuntimeAppVersion();
-  const endpointErrors: string[] = [];
 
-  // 1. Controllo nativo tramite plugin Tauri Updater (se in ambiente desktop)
+  // 1. Controllo primario nativo con il plugin ufficiale Tauri v2 Updater
   if (isTauriEnvironment()) {
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
@@ -105,8 +176,6 @@ export async function checkForAppUpdate(options?: {
             currentVersion: update.currentVersion || currentAppVer,
             releaseNotes: update.body || undefined,
             releaseDate: update.date || undefined,
-            downloadUrl: `https://github.com/jacobs133/autopia-manager/releases/download/v${update.version}/Autopia-Manager-Setup.exe`,
-            releaseUrl: `https://github.com/jacobs133/autopia-manager/releases/tag/v${update.version}`,
             rawUpdate: update,
           },
           error: null,
@@ -117,142 +186,47 @@ export async function checkForAppUpdate(options?: {
         return { updateAvailable: false, updateInfo: null, error: null };
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      endpointErrors.push(`Tauri Updater: ${msg}`);
-    }
-  }
-
-  // 2. Controllo tramite endpoint server Netlify su autopiashop.it
-  try {
-    const netlifyRes = await fetch('https://autopiashop.it/.netlify/functions/app-version', {
-      cache: 'no-store',
-    });
-    if (netlifyRes.ok) {
-      const manifest = await netlifyRes.json();
-      const remoteVer = manifest?.version;
-      if (remoteVer && isNewerVersion(remoteVer, currentAppVer)) {
-        return {
-          updateAvailable: true,
-          updateInfo: {
-            version: remoteVer,
-            currentVersion: currentAppVer,
-            releaseNotes: manifest.notes || `Nuova versione v${remoteVer} di Autopia Manager disponibile.`,
-            releaseDate: manifest.pub_date || new Date().toISOString(),
-            downloadUrl: manifest.download_url || `https://github.com/jacobs133/autopia-manager/releases/download/v${remoteVer}/Autopia-Manager-Setup.exe`,
-            releaseUrl: manifest.release_url || `https://github.com/jacobs133/autopia-manager/releases/tag/v${remoteVer}`,
-            rawUpdate: null,
-          },
-          error: null,
-        };
-      } else if (remoteVer) {
-        return { updateAvailable: false, updateInfo: null, error: null };
-      }
-    } else {
-      endpointErrors.push(`Netlify app-version: HTTP ${netlifyRes.status}`);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    endpointErrors.push(`Netlify app-version: ${msg}`);
-  }
-
-  // 3. Controllo tramite GitHub Releases API pubblica
-  try {
-    const ghRes = await fetch('https://api.github.com/repos/jacobs133/autopia-manager/releases/latest', {
-      cache: 'no-store',
-      headers: { Accept: 'application/vnd.github.v3+json' },
-    });
-    if (ghRes.ok) {
-      const release = await ghRes.json();
-      const rawTag = release.tag_name || release.name || '';
-      const remoteVer = rawTag.replace(/^v/, '').trim();
-
-      if (remoteVer && isNewerVersion(remoteVer, currentAppVer)) {
-        // Cerca installer .exe negli assets della release
-        const setupAsset = release.assets?.find(
-          (a: any) => a.name?.endsWith('.exe') || a.name?.includes('Setup')
-        );
-        const downloadUrl = setupAsset?.browser_download_url || `https://github.com/jacobs133/autopia-manager/releases/download/v${remoteVer}/Autopia-Manager-Setup.exe`;
-
-        return {
-          updateAvailable: true,
-          updateInfo: {
-            version: remoteVer,
-            currentVersion: currentAppVer,
-            releaseNotes: release.body || `Nuova versione v${remoteVer} pubblicata su GitHub.`,
-            releaseDate: release.published_at || new Date().toISOString(),
-            downloadUrl,
-            releaseUrl: release.html_url || `https://github.com/jacobs133/autopia-manager/releases/tag/v${remoteVer}`,
-            rawUpdate: null,
-          },
-          error: null,
-        };
-      } else if (remoteVer) {
-        return { updateAvailable: false, updateInfo: null, error: null };
-      }
-    } else {
-      endpointErrors.push(`GitHub API: HTTP ${ghRes.status} (repository privato o inesistente)`);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    endpointErrors.push(`GitHub API: ${msg}`);
-  }
-
-  // 4. Controllo tramite latest.json su GitHub
-  try {
-    const latestJsonRes = await fetch('https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json', {
-      cache: 'no-store',
-    });
-    if (latestJsonRes.ok) {
-      const manifest = await latestJsonRes.json();
-      const remoteVer = manifest?.version;
-      if (remoteVer && isNewerVersion(remoteVer, currentAppVer)) {
-        return {
-          updateAvailable: true,
-          updateInfo: {
-            version: remoteVer,
-            currentVersion: currentAppVer,
-            releaseNotes: manifest.notes,
-            releaseDate: manifest.pub_date,
-            downloadUrl: manifest.platforms?.['windows-x86_64']?.url || `https://github.com/jacobs133/autopia-manager/releases/download/v${remoteVer}/Autopia-Manager-Setup.exe`,
-            releaseUrl: `https://github.com/jacobs133/autopia-manager/releases/tag/v${remoteVer}`,
-            rawUpdate: null,
-          },
-          error: null,
-        };
-      } else if (remoteVer) {
-        return { updateAvailable: false, updateInfo: null, error: null };
-      }
-    } else {
-      endpointErrors.push(`GitHub latest.json: HTTP ${latestJsonRes.status}`);
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    endpointErrors.push(`GitHub latest.json: ${msg}`);
-  }
-
-  // Se è un controllo manuale forzato dall'utente e tutti gli endpoint hanno fallito con 404,
-  // informiamo chiaramente l'utente sul motivo (repository privato / Netlify non sincronizzato)
-  if (options?.force) {
-    const has404 = endpointErrors.some((e) => e.includes('404'));
-    if (has404) {
+      const userMessage = translateUpdaterError(err);
+      console.warn('[updaterService] Errore verifica Tauri Updater:', err);
       return {
         updateAvailable: false,
         updateInfo: null,
-        error: `I canali di aggiornamento ufficiali non hanno restituito release pubbliche (Netlify e GitHub restituiscono 404). Il repository GitHub 'jacobs133/autopia-manager' risulta privato. Per consentire la ricerca e il download automatico da tutti i PC, imposta il repository come "Public" nelle impostazioni di GitHub.`,
+        error: userMessage,
       };
     }
-    return {
-      updateAvailable: false,
-      updateInfo: null,
-      error: `Impossibile verificare gli aggiornamenti: ${endpointErrors.join('; ')}`,
-    };
+  }
+
+  // 2. Fallback per ambiente Web Dev Preview (simulazione controllo pulita)
+  try {
+    const res = await fetch('https://github.com/jacobs133/autopia-manager/releases/latest/download/latest.json', {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const manifest = await res.json();
+      const remoteVer = manifest?.version;
+      if (remoteVer && isNewerVersion(remoteVer, currentAppVer)) {
+        return {
+          updateAvailable: true,
+          updateInfo: {
+            version: remoteVer,
+            currentVersion: currentAppVer,
+            releaseNotes: manifest.notes || `Nuova versione v${remoteVer} di Autopia Manager.`,
+            releaseDate: manifest.pub_date || new Date().toISOString(),
+            rawUpdate: null,
+          },
+          error: null,
+        };
+      }
+    }
+  } catch {
+    // In dev preview silenziamo gli errori di rete se offline
   }
 
   return { updateAvailable: false, updateInfo: null, error: null };
 }
 
 /**
- * Confronta due stringhe di versione SemVer (es. "0.3.2" > "0.3.1").
+ * Confronta due stringhe SemVer (es. "0.3.9" > "0.3.8").
  */
 export function isNewerVersion(remote: string, current: string): boolean {
   const pRemote = remote.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
@@ -268,17 +242,16 @@ export function isNewerVersion(remote: string, current: string): boolean {
 }
 
 /**
- * Scarica e installa l'aggiornamento.
- * - Se rawUpdate nativo di Tauri v2 è disponibile: scarica e valida la firma crittografica.
- * - Se rawUpdate è null (fallback manifest / no-sign): apre il download diretto dell'installer
- *   e guida l'utente al completamento immediato.
+ * Scarica, verifica la firma crittografica ed installa l'aggiornamento
+ * direttamente dall'applicazione tramite l'Updater nativo di Tauri v2.
+ *
+ * Non apre MAI il browser e non rimanda MAI a file esterni da scaricare a mano.
  */
 export async function downloadAndInstallAppUpdate(
   updateHandle: Update | null,
-  onProgress: (progress: UpdateProgress) => void,
-  fallbackDownloadUrl?: string
+  onProgress: (progress: UpdateProgress) => void
 ): Promise<{ success: boolean; error: string | null }> {
-  // Caso A: Aggiornamento nativo Tauri v2 con firma digitale verificata
+  // Caso A: Ambiente desktop nativo Tauri con handle Update verificato
   if (isTauriEnvironment() && updateHandle) {
     try {
       let downloaded = 0;
@@ -289,6 +262,7 @@ export async function downloadAndInstallAppUpdate(
         percentage: 0,
         downloadedBytes: 0,
         totalBytes: 0,
+        stepMessage: 'Avvio download del pacchetto aggiornato...',
       });
 
       await updateHandle.downloadAndInstall((event) => {
@@ -300,17 +274,21 @@ export async function downloadAndInstallAppUpdate(
               percentage: 0,
               downloadedBytes: 0,
               totalBytes: contentLength,
+              stepMessage: 'Download in corso...',
             });
             break;
 
           case 'Progress':
             downloaded += event.data.chunkLength;
-            const pct = contentLength > 0 ? Math.min(100, Math.round((downloaded / contentLength) * 100)) : 50;
+            const pct = contentLength > 0
+              ? Math.min(100, Math.round((downloaded / contentLength) * 100))
+              : 50;
             onProgress({
               status: 'DOWNLOADING',
               percentage: pct,
               downloadedBytes: downloaded,
               totalBytes: contentLength,
+              stepMessage: `Scaricamento: ${pct}% completato`,
             });
             break;
 
@@ -320,98 +298,85 @@ export async function downloadAndInstallAppUpdate(
               percentage: 100,
               downloadedBytes: downloaded,
               totalBytes: contentLength,
+              stepMessage: 'Verifica firma crittografica ed installazione Windows in corso...',
             });
             break;
         }
       });
 
+      // Installazione completata con successo
       onProgress({
         status: 'READY_TO_RELAUNCH',
         percentage: 100,
         downloadedBytes: downloaded,
         totalBytes: contentLength,
+        stepMessage: 'Aggiornamento installato con successo! Riavvia l\'applicazione.',
       });
 
       return { success: true, error: null };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Errore durante il download dell\'aggiornamento';
-      console.warn('Download nativo non riuscito (es. firma o pacchetto non sincronizzato), fallback al download diretto dell\'installer Setup.exe:', msg);
-
-      // Invece di interrompere con errore, avviamo il download diretto dell'installer
-      try {
-        const targetUrl =
-          fallbackDownloadUrl ||
-          'https://github.com/jacobs133/autopia-manager/releases/latest/download/Autopia-Manager-Setup.exe';
-
-        onProgress({
-          status: 'DOWNLOADING',
-          percentage: 80,
-          downloadedBytes: 0,
-          totalBytes: 0,
-        });
-
-        await openExternalUrl(targetUrl);
-
-        onProgress({
-          status: 'READY_TO_RELAUNCH',
-          percentage: 100,
-          downloadedBytes: 0,
-          totalBytes: 0,
-        });
-
-        return { success: true, error: null };
-      } catch (fallbackErr: unknown) {
-        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : msg;
-        onProgress({
-          status: 'ERROR',
-          percentage: 0,
-          downloadedBytes: 0,
-          totalBytes: 0,
-          errorMessage: `Download automatico fallito (${fallbackMsg}). Usa il pulsante "Download Ultimo Setup (.exe)" per aggiornare.`,
-        });
-        return { success: false, error: fallbackMsg };
-      }
+      const userError = translateUpdaterError(err);
+      console.error('[updaterService] Errore download e installazione:', err);
+      onProgress({
+        status: 'ERROR',
+        percentage: 0,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        errorMessage: userError,
+      });
+      return { success: false, error: userError };
     }
   }
 
-  // Caso B: Fallback manifest o download diretto dell'installer Autopia-Manager-Setup.exe
-  const targetUrl =
-    fallbackDownloadUrl ||
-    'https://github.com/jacobs133/autopia-manager/releases/latest/download/Autopia-Manager-Setup.exe';
-
-  onProgress({
-    status: 'DOWNLOADING',
-    percentage: 50,
-    downloadedBytes: 0,
-    totalBytes: 0,
-  });
-
-  try {
-    await openExternalUrl(targetUrl);
-
+  // Caso B: Ambiente Web Preview (simulazione UI per sviluppatori)
+  if (!isTauriEnvironment()) {
+    onProgress({
+      status: 'DOWNLOADING',
+      percentage: 25,
+      downloadedBytes: 5000000,
+      totalBytes: 20000000,
+      stepMessage: 'Simulazione download ambiente Web Dev...',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    onProgress({
+      status: 'DOWNLOADING',
+      percentage: 75,
+      downloadedBytes: 15000000,
+      totalBytes: 20000000,
+      stepMessage: 'Simulazione download ambiente Web Dev...',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    onProgress({
+      status: 'INSTALLING',
+      percentage: 100,
+      downloadedBytes: 20000000,
+      totalBytes: 20000000,
+      stepMessage: 'Simulazione installazione pacchetto...',
+    });
+    await new Promise((r) => setTimeout(r, 500));
     onProgress({
       status: 'READY_TO_RELAUNCH',
       percentage: 100,
-      downloadedBytes: 0,
-      totalBytes: 0,
+      downloadedBytes: 20000000,
+      totalBytes: 20000000,
+      stepMessage: 'Aggiornamento simulato pronto per il riavvio.',
     });
-
     return { success: true, error: null };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Impossibile avviare il download dell\'installer';
-    onProgress({
-      status: 'ERROR',
-      percentage: 0,
-      downloadedBytes: 0,
-      totalBytes: 0,
-      errorMessage: msg,
-    });
-    return { success: false, error: msg };
   }
+
+  const noHandleError = 'Nessun handle di aggiornamento valido disponibile per l\'installazione.';
+  onProgress({
+    status: 'ERROR',
+    percentage: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    errorMessage: noHandleError,
+  });
+  return { success: false, error: noHandleError };
 }
 
 /**
- * Riavvia l'applicazione desktop per applicare la nuova versione installata.
+ * Riavvia Autopia Manager per eseguire immediatamente la nuova versione aggiornata.
  */
 export async function relaunchApp(): Promise<void> {
   if (isTauriEnvironment()) {
@@ -419,7 +384,7 @@ export async function relaunchApp(): Promise<void> {
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
     } catch (err) {
-      console.error('Errore durante il riavvio con tauri-plugin-process:', err);
+      console.error('[updaterService] Errore durante il riavvio con tauri-plugin-process:', err);
     }
   } else {
     window.location.reload();
