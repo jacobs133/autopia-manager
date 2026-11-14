@@ -44,7 +44,7 @@ export function isTauriEnvironment(): boolean {
 /**
  * Versione predefinita dell'applicazione definita nel client.
  */
-export const APP_CURRENT_VERSION = '0.3.10';
+export const APP_CURRENT_VERSION = '0.3.11';
 let cachedAppVersion = APP_CURRENT_VERSION;
 
 /**
