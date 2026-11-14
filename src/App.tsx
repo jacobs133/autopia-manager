@@ -17,15 +17,13 @@ import { CsvImportManager } from './components/import/CsvImportManager';
 import { AdminManager } from './components/admin/AdminManager';
 import { EbayManager } from './components/ebay/EbayManager';
 import { OrdersManager } from './components/orders/OrdersManager';
+import { AutopiaLogo, Button, StatusBadge } from './components/ui/DesignSystem';
 import {
-  Wrench,
   CheckCircle2,
-  Building2,
   MapPin,
   FileText,
   Mail,
   ShieldCheck,
-  ShieldAlert,
   AlertTriangle,
   Loader2,
   LogOut,
@@ -34,10 +32,12 @@ import {
   Store,
   FileSpreadsheet,
   Settings,
-  HelpCircle,
   Globe,
   ShoppingBag,
+  ArrowRight,
+  ExternalLink,
 } from 'lucide-react';
+import { openExternalUrl } from './services/externalLinkService';
 
 function AppContent() {
   const {
@@ -56,43 +56,38 @@ function AppContent() {
   // 1. Schermata iniziale di caricamento
   if (status === 'INITIALIZING') {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 font-sans select-none">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 animate-pulse">
-            <Wrench className="w-6 h-6" />
-          </div>
-          <div className="text-center space-y-1">
-            <h1 className="text-lg font-bold tracking-wider text-slate-100 uppercase">
-              AUTOPIA <span className="text-amber-400">MANAGER</span>
-            </h1>
-            <p className="text-xs text-slate-500 flex items-center space-x-2 justify-center">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-              <span>Verifica sessione e configurazione in corso...</span>
-            </p>
-          </div>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#F5F7F7] text-[#1A2322] font-sans select-none">
+        <div className="flex flex-col items-center space-y-5">
+          <AutopiaLogo size="lg" subtitle="MANAGER" />
+          <p className="text-xs text-[#5C6B68] flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-[#074E44]" />
+            <span>Caricamento spazio di lavoro...</span>
+          </p>
         </div>
       </div>
     );
   }
 
-  // 2. Schermata impostazioni (accessibile solo ed esclusivamente se l'account è master admin)
+  // 2. Schermata impostazioni (accessibile solo ed esclusivamente all'account amministratore)
   const isSettingsActive = activeSection === 'settings' && isAdmin;
 
-  // 3. Se non autenticato o configurazione mancante: mostra il form di login
+  // 3. Se non autenticato o configurazione mancante: mostra il login
   if ((status === 'UNAUTHENTICATED' || status === 'UNCONFIGURED') && !isSettingsActive) {
     return (
       <DesktopShell
         activeSection={activeSection}
         onSelectSection={setActiveSection}
       >
-        <LoginForm onOpenSettings={() => {
-          if (isAdmin) setActiveSection('settings');
-        }} />
+        <LoginForm
+          onOpenSettings={() => {
+            if (isAdmin) setActiveSection('settings');
+          }}
+        />
       </DesktopShell>
     );
   }
 
-  // 4. Se autenticato ma l'account non è abilitato / in attesa / sospeso
+  // 4. Se autenticato ma account in attesa / sospeso / rifiutato
   const isPendingOrRestricted =
     status === 'AUTHENTICATED_PENDING' ||
     status === 'AUTHENTICATED_SUSPENDED' ||
@@ -105,57 +100,57 @@ function AppContent() {
         activeSection={activeSection}
         onSelectSection={setActiveSection}
       >
-        <div className="flex-1 flex items-center justify-center p-6 bg-slate-950 font-sans">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-xl p-7 space-y-5">
-            <div className="flex items-center space-x-3 text-amber-400">
-              <AlertTriangle className="w-7 h-7 shrink-0 text-amber-400" />
+        <div className="flex-1 flex items-center justify-center p-6 bg-[#F5F7F7] font-sans">
+          <div className="w-full max-w-lg bg-white border border-[#E2E8E7] rounded-2xl shadow-sm p-7 space-y-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
               <div>
-                <h2 className="text-base font-bold text-slate-100">
-                  {status === 'AUTHENTICATED_PENDING' && 'Account in Attesa di Approvazione'}
-                  {status === 'AUTHENTICATED_SUSPENDED' && 'Account Autodemolitore Sospeso'}
-                  {status === 'AUTHENTICATED_REJECTED' && 'Richiesta Venditore Rifiutata'}
-                  {status === 'AUTHENTICATED_NO_SELLER' && 'Nessun Profilo Venditore Trovato'}
+                <h2 className="text-base font-bold text-[#1A2322]">
+                  {status === 'AUTHENTICATED_PENDING' && 'Account in attesa di approvazione'}
+                  {status === 'AUTHENTICATED_SUSPENDED' && 'Account venditore sospeso'}
+                  {status === 'AUTHENTICATED_REJECTED' && 'Richiesta venditore non approvata'}
+                  {status === 'AUTHENTICATED_NO_SELLER' && 'Profilo autodemolitore non trovato'}
                 </h2>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  Accesso identificato: <span className="text-slate-200 font-mono">{user?.email}</span>
+                <div className="text-xs text-[#5C6B68] mt-0.5">
+                  Account collegato: <span className="text-[#1A2322] font-medium">{user?.email}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 text-xs text-slate-300 leading-relaxed">
+            <div className="bg-[#F7FAF9] p-4 rounded-xl border border-[#E2E8E7] text-xs text-[#374845] leading-relaxed">
               {errorMessage}
             </div>
 
             {sellerProfile && (
-              <div className="bg-slate-950/60 p-3 rounded border border-slate-800/80 text-xs space-y-1 text-slate-400">
-                <div>Azienda: <strong className="text-slate-200">{sellerProfile.business_name}</strong></div>
-                <div>Stato corrente: <span className="text-amber-400 uppercase font-mono">{sellerProfile.status}</span></div>
-                <div>Città: <span className="text-slate-200">{sellerProfile.city}</span></div>
+              <div className="bg-white p-3.5 rounded-xl border border-[#E2E8E7] text-xs space-y-1 text-[#5C6B68]">
+                <div>
+                  Azienda: <strong className="text-[#1A2322]">{sellerProfile.business_name}</strong>
+                </div>
+                <div>
+                  Città: <span className="text-[#1A2322]">{sellerProfile.city}</span>
+                </div>
+                <div>
+                  Stato: <span className="font-semibold text-amber-700 uppercase">{sellerProfile.status}</span>
+                </div>
               </div>
             )}
 
             <div className="flex items-center justify-between pt-2">
               {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveSection('settings')}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
-                >
+                <Button variant="secondary" size="sm" onClick={() => setActiveSection('settings')}>
                   <Settings className="w-3.5 h-3.5" />
-                  <span>Parametri Connessione</span>
-                </button>
+                  <span>Impostazioni Server</span>
+                </Button>
               ) : (
                 <div />
               )}
 
-              <button
-                type="button"
-                onClick={logout}
-                className="px-4 py-2 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 rounded text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
-              >
+              <Button variant="danger" size="sm" onClick={logout}>
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Disconnetti Account</span>
-              </button>
+                <span>Esci dall'account</span>
+              </Button>
             </div>
           </div>
         </div>
@@ -163,249 +158,200 @@ function AppContent() {
     );
   }
 
-  // 5. Utente autenticato e approvato (o schermata impostazioni esplicita)
+  // Moduli principali della Dashboard
+  const dashboardCards: Array<{
+    id: DesktopSection;
+    title: string;
+    subtitle: string;
+    description: string;
+    actionLabel: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      id: 'vehicles',
+      title: 'Veicoli in Demolizione',
+      subtitle: 'Parco veicoli',
+      description: 'Registra targhe, telai VIN, dati vettura ed estrai rapidamente i ricambi.',
+      actionLabel: 'Apri veicoli',
+      icon: <Car className="w-5 h-5" />,
+    },
+    {
+      id: 'parts',
+      title: 'Magazzino & Scaffalature',
+      subtitle: 'Inventario ricambi',
+      description: 'Gestisci codici OEM, giacenze, prezzi, posizioni in magazzino e vendite al banco.',
+      actionLabel: 'Apri magazzino',
+      icon: <Package className="w-5 h-5" />,
+    },
+    {
+      id: 'orders',
+      title: 'Ordini & Richieste',
+      subtitle: 'Vendite online',
+      description: 'Conferma le richieste dei clienti, prepara le spedizioni e inserisci il tracking.',
+      actionLabel: 'Apri ordini',
+      icon: <ShoppingBag className="w-5 h-5" />,
+    },
+    {
+      id: 'listings',
+      title: 'Annunci Autopia Shop',
+      subtitle: 'Vetrina online',
+      description: 'Controlla visibilità, prezzi e pubblicazione dei ricambi su autopiashop.it.',
+      actionLabel: 'Gestisci annunci',
+      icon: <Store className="w-5 h-5" />,
+    },
+    {
+      id: 'import',
+      title: 'Importazione CSV',
+      subtitle: 'Caricamento rapido',
+      description: 'Importa in blocco il catalogo ricambi da file CSV con verifica automatica.',
+      actionLabel: 'Importa file',
+      icon: <FileSpreadsheet className="w-5 h-5" />,
+    },
+    {
+      id: 'ebay',
+      title: 'Canale eBay',
+      subtitle: 'Integrazione esterna',
+      description: 'Collega il tuo account venditore, pubblica inserzioni e sincronizza le disponibilità.',
+      actionLabel: 'Gestisci eBay',
+      icon: <Globe className="w-5 h-5" />,
+    },
+  ];
+
+  // 5. Utente autenticato e approvato
   return (
     <DesktopShell
       activeSection={activeSection}
       onSelectSection={setActiveSection}
     >
-      {/* Vista Impostazioni & Sicurezza Master (Riservata esclusivamente ad lollogamer2009@gmail.com) */}
+      {/* Vista Impostazioni Master (solo Admin) */}
       {activeSection === 'settings' && isAdmin && <BackendSettings />}
 
-      {/* Vista Cruscotto (Dashboard) */}
+      {/* Vista Dashboard */}
       {activeSection === 'dashboard' && activeSeller && (
-        <div className="p-6 max-w-6xl mx-auto space-y-6 font-sans">
-          {/* Banner di Benvenuto Autodemolitore Approvato o Master Admin */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex items-start justify-between">
-            <div className="space-y-1.5">
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 flex items-center space-x-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  <span>{isAdmin ? 'MASTER ADMIN PIATTAFORMA' : 'AUTODEMOLITORE APPROVATO'}</span>
-                </span>
-                <span className="text-xs text-slate-500 font-mono">
-                  seller_id: {activeSeller.id.slice(0, 8)}...
-                </span>
-                {isAdmin && (
-                  <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800/60 px-1.5 py-0.2 rounded font-mono font-bold">
-                    Supervisione Rete Attiva
-                  </span>
-                )}
+        <div className="p-6 max-w-6xl mx-auto w-full space-y-6 font-sans">
+          {/* Intestazione Azienda */}
+          <div className="bg-white border border-[#E2E8E7] rounded-xl p-6 shadow-[0_1px_2px_rgba(7,78,68,0.04)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="success">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>{isAdmin ? 'Amministratore Piattaforma' : 'Autodemolitore Verificato'}</span>
+                </StatusBadge>
               </div>
-              <h1 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-                <Building2 className="w-5 h-5 text-amber-400" />
-                <span>{activeSeller.business_name}</span>
+
+              <h1 className="text-2xl font-bold text-[#1A2322] tracking-tight">
+                {activeSeller.business_name}
               </h1>
-              <p className="text-xs text-slate-400 flex items-center space-x-3">
-                <span className="flex items-center space-x-1">
-                  <MapPin className="w-3 h-3 text-slate-500" />
-                  <span>{activeSeller.city} ({activeSeller.province || 'IT'})</span>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#5C6B68]">
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#074E44]" />
+                  <span>
+                    {activeSeller.city}
+                    {activeSeller.province ? ` (${activeSeller.province})` : ''}
+                  </span>
                 </span>
                 {activeSeller.vat_number && (
-                  <span className="flex items-center space-x-1">
-                    <FileText className="w-3 h-3 text-slate-500" />
-                    <span>P.IVA: {activeSeller.vat_number}</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-[#074E44]" />
+                    <span className="tabular-nums">P.IVA {activeSeller.vat_number}</span>
                   </span>
                 )}
-                <span className="flex items-center space-x-1">
-                  <Mail className="w-3 h-3 text-slate-500" />
-                  <span>{user?.email}</span>
-                </span>
-              </p>
-            </div>
-
-            <div className="text-right space-y-1 text-xs">
-              <div className="text-slate-400">Collegamento Backend:</div>
-              <div className="font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded inline-block">
-                Supabase Auth RLS Attivo
-              </div>
-            </div>
-          </div>
-
-          {/* Griglia Moduli Gestionale Fase 2 Completi e Funzionanti */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div
-              onClick={() => setActiveSection('vehicles')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Parco Veicoli
-                </span>
-                <Car className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Veicoli in Demolizione</div>
-              <p className="text-xs text-slate-400">
-                Registro ingressi, targhe, telaio VIN e catalogo centrale 11.346 modelli (`seller_vehicles`).
-              </p>
-              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
-                <span>Gestisci Parco Veicoli →</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => setActiveSection('parts')}
-              className="bg-slate-900 border border-slate-800 hover:border-blue-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Magazzino
-                </span>
-                <Package className="w-5 h-5 text-blue-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Ricambi & Scaffalature</div>
-              <p className="text-xs text-slate-400">
-                Codici OEM, giacenze, prezzi, corsie/scaffali e scarico rapido vendita (`inventories`).
-              </p>
-              <div className="pt-2 text-xs text-blue-400 font-medium flex items-center space-x-1">
-                <span>Accedi al Magazzino →</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => setActiveSection('orders')}
-              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Vendite & Richieste
-                </span>
-                <ShoppingBag className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Ordini & Acquisti</div>
-              <p className="text-xs text-slate-400">
-                Verifica i pezzi venduti, conferma le richieste clienti e gestisci spedizioni e tracking.
-              </p>
-              <div className="pt-2 text-xs text-emerald-400 font-medium flex items-center space-x-1">
-                <span>Visualizza Ordini & Vendite →</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => setActiveSection('listings')}
-              className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Marketplace
-                </span>
-                <Store className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Annunci Autopia Shop</div>
-              <p className="text-xs text-slate-400">
-                Controllo inserzioni online, visibilità e sincronizzazione immediata con autopiashop.it.
-              </p>
-              <div className="pt-2 text-xs text-emerald-400 font-medium flex items-center space-x-1">
-                <span>Gestisci Annunci Online →</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => setActiveSection('import')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Importazione
-                </span>
-                <FileSpreadsheet className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Caricamento CSV Ricambi</div>
-              <p className="text-xs text-slate-400">
-                Importazione massiva di giacenze con modello CSV Autopia e rilevamento automatico categorie.
-              </p>
-              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
-                <span>Importa File CSV →</span>
-              </div>
-            </div>
-
-            {/* Scheda Canale eBay Sandbox (Fase 3) */}
-            <div
-              onClick={() => setActiveSection('ebay')}
-              className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
-                  Marketplace Esterno
-                </span>
-                <Globe className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="text-lg font-bold text-slate-100">Canale eBay (Sandbox)</div>
-              <p className="text-xs text-slate-400">
-                Collegamento account tramite OAuth 2.0 protetto, stato autorizzazione e predisposizione sync.
-              </p>
-              <div className="pt-2 text-xs text-amber-400 font-medium flex items-center space-x-1">
-                <span>Gestisci Canale eBay →</span>
-              </div>
-            </div>
-
-            {/* Scheda Supervisione Amministratore (Visibile solo per lollogamer2009@gmail.com) */}
-            {isAdmin && (
-              <div
-                onClick={() => setActiveSection('admin')}
-                className="bg-slate-900 border border-purple-500/40 hover:border-purple-400 rounded-lg p-5 space-y-2 cursor-pointer transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">
-                    SuperAdmin
+                {user?.email && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-[#074E44]" />
+                    <span>{user.email}</span>
                   </span>
-                  <ShieldAlert className="w-5 h-5 text-purple-400" />
-                </div>
-                <div className="text-lg font-bold text-slate-100">Amministrazione Autopia</div>
-                <p className="text-xs text-slate-400">
-                  Accrediti venditori, statistiche di rete e gestione centralizzata autodemolitori.
-                </p>
-                <div className="pt-2 text-xs text-purple-400 font-medium flex items-center space-x-1">
-                  <span>Apri Console Master →</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Dettagli Tecnico-Operativi Fase 2 Completata */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Autopia Manager Fase 2 Operativa & Fase 3 Avviata</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300">
-              <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1">
-                <div className="font-semibold text-amber-400">Magazzino & Scarico Vendite Banco</div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Le vendite al banco scalano in tempo reale le quantità disponibili in <code className="text-slate-300">inventories</code>, aggiornando lo stato degli annunci per prevenire doppie vendite online su autopiashop.it.
-                </p>
-              </div>
-
-              <div className="bg-slate-950 p-3 rounded border border-slate-800/80 space-y-1">
-                <div className="font-semibold text-purple-400">Sicurezza Ruoli & Privilegi Master</div>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Tutte le funzionalità di gestione e supervisione globale della piattaforma sono rigorosamente blindate e disponibili esclusivamente per <code className="text-purple-300 font-mono">lollogamer2009@gmail.com</code>.
-                </p>
+                )}
               </div>
             </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openExternalUrl('https://autopiashop.it')}
+              >
+                <span>Apri Autopia Shop</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setActiveSection('parts')}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Vai al Magazzino</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Moduli Operativi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {dashboardCards.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => setActiveSection(card.id)}
+                className="group text-left bg-white border border-[#E2E8E7] hover:border-[#074E44]/50 hover:shadow-[0_6px_18px_rgba(7,78,68,0.06)] rounded-xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[#5C6B68]">{card.subtitle}</span>
+                    <div className="w-9 h-9 rounded-lg bg-[#EAF3F1] text-[#074E44] flex items-center justify-center group-hover:bg-[#074E44] group-hover:text-white transition-colors">
+                      {card.icon}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <h2 className="text-base font-bold text-[#1A2322]">{card.title}</h2>
+                    <p className="text-xs text-[#5C6B68] leading-relaxed">{card.description}</p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-[#F0F4F3] flex items-center justify-between text-xs font-semibold text-[#074E44]">
+                  <span>{card.actionLabel}</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </button>
+            ))}
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveSection('admin')}
+                className="group text-left bg-white border border-[#C6DFDA] hover:border-[#074E44] hover:shadow-[0_6px_18px_rgba(7,78,68,0.08)] rounded-xl p-5 flex flex-col justify-between gap-4 transition-all cursor-pointer"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[#074E44]">Area Amministratore</span>
+                    <div className="w-9 h-9 rounded-lg bg-[#074E44] text-white flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <h2 className="text-base font-bold text-[#1A2322]">Amministrazione Piattaforma</h2>
+                    <p className="text-xs text-[#5C6B68] leading-relaxed">
+                      Approva nuovi autodemolitori, monitora la rete venditori e gestisci gli accessi.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-[#F0F4F3] flex items-center justify-between text-xs font-semibold text-[#074E44]">
+                  <span>Apri amministrazione</span>
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Modulo Veicoli Demoliti Reale */}
       {activeSection === 'vehicles' && <VehiclesManager />}
-
-      {/* Modulo Magazzino & Ricambi Reale (Fase 2) */}
       {activeSection === 'parts' && <PartsManager />}
-
-      {/* Modulo Ordini & Richieste di Vendita */}
       {activeSection === 'orders' && <OrdersManager />}
-
-      {/* Modulo Annunci Marketplace Autopia Shop (Fase 2) */}
       {activeSection === 'listings' && <ListingsManager />}
-
-      {/* Modulo Importazione CSV (Fase 2) */}
       {activeSection === 'import' && <CsvImportManager />}
-
-      {/* Modulo Canale eBay Sandbox (Fase 3) */}
       {activeSection === 'ebay' && <EbayManager />}
-
-      {/* Modulo Amministrazione Piattaforma (Fase 2 - Riservato lollogamer2009@gmail.com) */}
       {activeSection === 'admin' && <AdminManager />}
     </DesktopShell>
   );

@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Database,
-  Laptop,
-  Clock,
   AlertCircle,
-  CheckCircle2,
-  ShieldAlert,
-  Sparkles,
+  DownloadCloud,
   Loader2,
   RotateCcw,
 } from 'lucide-react';
-import { isTauriEnvironment } from '../../utils/tauriWindow';
 import { useUpdate } from '../../contexts/UpdateContext';
 
 interface StatusBarProps {
@@ -21,89 +15,81 @@ interface StatusBarProps {
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   backendConnected = false,
-  statusMessage = 'Backend Autopia non collegato',
+  statusMessage = 'Servizio non collegato',
   sellerBusinessName,
 }) => {
-  const { currentVersion, updateAvailable, updateInfo, progress, startInstall, relaunch, openUpdateModal } = useUpdate();
+  const { currentVersion, updateAvailable, updateInfo, progress, relaunch, openUpdateModal } = useUpdate();
   const [time, setTime] = useState<string>('');
-  const [isTauri, setIsTauri] = useState(false);
 
   useEffect(() => {
-    setIsTauri(isTauriEnvironment());
     const updateClock = () => {
       const now = new Date();
       setTime(
         now.toLocaleTimeString('it-IT', {
           hour: '2-digit',
           minute: '2-digit',
-          second: '2-digit',
         })
       );
     };
     updateClock();
-    const interval = setInterval(updateClock, 1000);
+    const interval = setInterval(updateClock, 15000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <footer className="h-7 bg-slate-950 border-t border-slate-800 text-slate-400 text-[11px] px-3 flex items-center justify-between select-none shrink-0 font-sans">
-      {/* Sinistra: Stato Connessione Reale */}
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-1.5">
-          <Database className="w-3 h-3 text-slate-500" />
-          <span className="text-slate-400">Backend Autopia:</span>
-          {backendConnected ? (
-            <span className="flex items-center space-x-1 text-emerald-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Connesso a Supabase</span>
-            </span>
-          ) : (
-            <span className="flex items-center space-x-1 text-amber-400/90 font-medium">
-              <AlertCircle className="w-3 h-3 text-amber-400" />
-              <span>Disconnesso / Da configurare</span>
-            </span>
-          )}
-        </div>
+    <footer className="h-7 bg-white border-t border-[#E2E8E7] text-[#5C6B68] text-[11px] px-3.5 flex items-center justify-between select-none shrink-0 font-sans">
+      {/* Sinistra: Stato servizio e sede attiva */}
+      <div className="flex items-center gap-3 min-w-0">
+        {backendConnected ? (
+          <span className="inline-flex items-center gap-1.5 text-[#074E44] font-medium whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" />
+            <span>Sincronizzato</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-amber-700 font-medium whitespace-nowrap">
+            <AlertCircle className="w-3 h-3 text-amber-600" />
+            <span>Non connesso</span>
+          </span>
+        )}
 
-        <div className="h-3 w-px bg-slate-800" />
+        <span className="text-[#D7E0DE]" aria-hidden="true">|</span>
 
-        <span className="text-slate-500 truncate max-w-md">{statusMessage}</span>
+        <span className="truncate max-w-md text-[#5C6B68]">{statusMessage}</span>
 
         {sellerBusinessName && (
           <>
-            <div className="h-3 w-px bg-slate-800" />
-            <span className="text-amber-400/90 font-medium truncate max-w-xs">
-              Azienda: {sellerBusinessName}
+            <span className="text-[#D7E0DE] hidden sm:inline" aria-hidden="true">|</span>
+            <span className="hidden sm:inline font-medium text-[#1A2322] truncate max-w-xs">
+              {sellerBusinessName}
             </span>
           </>
         )}
       </div>
 
-      {/* Destra: Runtime, Versione e Orologio */}
-      <div className="flex items-center space-x-3">
-        {/* Indicatore Aggiornamento Disponibile o in Corso */}
-        {updateAvailable && (
+      {/* Destra: Aggiornamenti, versione e orario */}
+      <div className="flex items-center gap-3 shrink-0">
+        {updateAvailable && progress.status !== 'DOWNLOADING' && progress.status !== 'READY_TO_RELAUNCH' && (
           <>
             <button
               type="button"
               onClick={openUpdateModal}
-              className="flex items-center space-x-1 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 font-medium transition-colors cursor-pointer text-[10px]"
+              className="inline-flex items-center gap-1 text-[#074E44] bg-[#EAF3F1] hover:bg-[#DCECE9] px-2 py-0.5 rounded-md border border-[#C6DFDA] font-semibold transition-colors cursor-pointer text-[10px]"
               title="Visualizza dettagli aggiornamento"
             >
-              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-              <span>Nuova v{updateInfo?.version} disponibile</span>
+              <DownloadCloud className="w-3 h-3 shrink-0" />
+              <span>Aggiornamento v{updateInfo?.version}</span>
             </button>
-            <div className="h-3 w-px bg-slate-800" />
+            <span className="text-[#D7E0DE]" aria-hidden="true">|</span>
           </>
         )}
 
         {progress.status === 'DOWNLOADING' && (
           <>
-            <span className="flex items-center space-x-1 text-amber-300 font-mono text-[10px]">
-              <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-              <span>Aggiornamento: {progress.percentage}%</span>
+            <span className="inline-flex items-center gap-1 text-[#074E44] font-mono tabular-nums text-[10px] font-semibold">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>Download {progress.percentage}%</span>
             </span>
-            <div className="h-3 w-px bg-slate-800" />
+            <span className="text-[#D7E0DE]" aria-hidden="true">|</span>
           </>
         )}
 
@@ -112,37 +98,27 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             <button
               type="button"
               onClick={relaunch}
-              className="flex items-center space-x-1 text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800/80 font-bold transition-colors cursor-pointer text-[10px] animate-pulse"
+              className="inline-flex items-center gap-1 text-white bg-[#074E44] hover:bg-[#053B33] px-2 py-0.5 rounded-md font-semibold transition-colors cursor-pointer text-[10px]"
             >
-              <RotateCcw className="w-3 h-3 text-emerald-400" />
-              <span>Riavvia per completare</span>
+              <RotateCcw className="w-3 h-3" />
+              <span>Riavvia per aggiornare</span>
             </button>
-            <div className="h-3 w-px bg-slate-800" />
+            <span className="text-[#D7E0DE]" aria-hidden="true">|</span>
           </>
         )}
-
-        <div className="flex items-center space-x-1 text-slate-400">
-          <Laptop className="w-3 h-3 text-slate-500" />
-          <span>{isTauri ? 'Tauri 2.x • Windows' : 'Web Dev Preview'}</span>
-        </div>
-
-        <div className="h-3 w-px bg-slate-800" />
 
         <button
           type="button"
           onClick={openUpdateModal}
-          className="text-slate-400 hover:text-amber-400 font-mono text-[10px] cursor-pointer transition-colors px-1 py-0.5 rounded hover:bg-slate-900"
-          title="Gestione Aggiornamenti Software"
+          className="text-[#5C6B68] hover:text-[#074E44] font-mono tabular-nums text-[10px] cursor-pointer transition-colors px-1.5 py-0.5 rounded hover:bg-[#F2F6F5]"
+          title="Gestione aggiornamenti"
         >
           v{currentVersion}
         </button>
 
-        <div className="h-3 w-px bg-slate-800" />
+        <span className="text-[#D7E0DE]" aria-hidden="true">|</span>
 
-        <div className="flex items-center space-x-1 text-slate-400 font-mono">
-          <Clock className="w-3 h-3 text-slate-500" />
-          <span>{time}</span>
-        </div>
+        <span className="text-[#5C6B68] font-mono tabular-nums text-[10px]">{time}</span>
       </div>
     </footer>
   );

@@ -4,7 +4,6 @@ import {
   Car,
   Save,
   Loader2,
-  AlertCircle,
   Calendar,
   MapPin,
   Tag,
@@ -14,14 +13,11 @@ import {
   ChevronRight,
   Database as DatabaseIcon,
   RefreshCw,
-  AlertTriangle,
   Layers,
   Sparkles,
 } from 'lucide-react';
 import type { SellerVehicle, CatalogVehicle, CatalogMakeInfo } from '../../types/vehicles';
-import {
-  VEHICLE_STATUS_OPTIONS,
-} from '../../types/vehicles';
+import { VEHICLE_STATUS_OPTIONS } from '../../types/vehicles';
 import {
   createSellerVehicle,
   updateSellerVehicle,
@@ -32,6 +28,7 @@ import {
   fetchCatalogGenerations,
   fetchCatalogVariants,
 } from '../../services/vehiclesService';
+import { AlertBanner, Button, StatusBadge, uiClasses } from '../ui/DesignSystem';
 
 interface VehicleFormModalProps {
   isOpen: boolean;
@@ -52,15 +49,12 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
 }) => {
   const isEditing = Boolean(vehicleToEdit);
 
-  // Variante catalogo centrale selezionata
   const [selectedCatalogVehicle, setSelectedCatalogVehicle] = useState<CatalogVehicle | null>(null);
   const [isLoadingCatalogItem, setIsLoadingCatalogItem] = useState(false);
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
 
-  // Modalità di selezione catalogo: 'quick' (ricerca rapida) | 'cascade' (a cascata)
   const [selectionMode, setSelectionMode] = useState<'quick' | 'cascade'>('quick');
 
-  // Stato Ricerca Rapida
   const [quickSearchTerm, setQuickSearchTerm] = useState('');
   const [quickSearchResults, setQuickSearchResults] = useState<CatalogVehicle[]>([]);
   const [isSearchingQuick, setIsSearchingQuick] = useState(false);
@@ -68,7 +62,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   const [hasSearchedQuick, setHasSearchedQuick] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Stato Selezione a Cascata
   const [availableMakes, setAvailableMakes] = useState<string[]>([]);
   const [makeDetails, setMakeDetails] = useState<CatalogMakeInfo[]>([]);
   const [isLoadingMakes, setIsLoadingMakes] = useState(false);
@@ -87,7 +80,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [cascadeError, setCascadeError] = useState<string | null>(null);
 
-  // Campi specifici del singolo esemplare fisico nel piazzale
   const [year, setYear] = useState<string>('');
   const [plate, setPlate] = useState('');
   const [vin, setVin] = useState('');
@@ -98,14 +90,11 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   const [notes, setNotes] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
 
-  // Conferma scostamento anno immatricolazione rispetto agli anni di produzione standard
   const [confirmYearMismatch, setConfirmYearMismatch] = useState(false);
 
-  // Stato submit form
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // 1. Caricamento iniziale e reset
   useEffect(() => {
     if (!isOpen) return;
 
@@ -115,7 +104,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     setVariantFilterTerm('');
 
     if (vehicleToEdit) {
-      // Modifica veicolo esistente
       setYear(vehicleToEdit.year ? String(vehicleToEdit.year) : '');
       setPlate(vehicleToEdit.plate || '');
       setVin(vehicleToEdit.vin || '');
@@ -125,7 +113,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
       setNotes(vehicleToEdit.notes || '');
       setPhotoUrl(vehicleToEdit.photo_url || '');
 
-      // Estrazione eventuale chilometraggio salvato nelle note
       const kmMatch = vehicleToEdit.notes?.match(/\[Km:\s*([^\]]+)\]/i);
       if (kmMatch) {
         setMileage(kmMatch[1].trim());
@@ -133,7 +120,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
         setMileage('');
       }
 
-      // Se il veicolo ha un catalog_vehicle_id, caricalo dal catalogo centrale
       if (vehicleToEdit.catalog_vehicle_id) {
         setIsLoadingCatalogItem(true);
         fetchCatalogVehicleById(vehicleToEdit.catalog_vehicle_id)
@@ -159,7 +145,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
         setSelectedCatalogVehicle(null);
       }
     } else if (initialCatalogVehicle) {
-      // Pre-compilazione da catalogo centrale selezionato
       setSelectedCatalogVehicle(initialCatalogVehicle);
       setYear(String(initialCatalogVehicle.year_from || new Date().getFullYear()));
       setPlate('');
@@ -173,7 +158,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
       setQuickSearchResults([]);
       setHasSearchedQuick(false);
     } else {
-      // Nuovo inserimento
       setSelectedCatalogVehicle(null);
       setYear(String(new Date().getFullYear()));
       setPlate('');
@@ -193,7 +177,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }
   }, [isOpen, vehicleToEdit, initialCatalogVehicle]);
 
-  // 2. Ricerca rapida con debounce
   const handleQuickSearchChange = (value: string) => {
     setQuickSearchTerm(value);
     setQuickSearchError(null);
@@ -229,7 +212,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }, 300);
   };
 
-  // 3. Gestione Navigazione a Cascata: Caricamento Marche
   const loadMakes = useCallback(async () => {
     setIsLoadingMakes(true);
     setCascadeError(null);
@@ -259,7 +241,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }
   }, [selectionMode, availableMakes.length, isLoadingMakes, loadMakes]);
 
-  // Gestione cambio marca
   const handleMakeChange = async (make: string) => {
     setSelectedMake(make);
     setSelectedModel('');
@@ -287,7 +268,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }
   };
 
-  // Gestione cambio modello
   const handleModelChange = async (model: string) => {
     setSelectedModel(model);
     setSelectedGeneration('');
@@ -297,7 +277,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
 
     if (!model || !selectedMake) return;
 
-    // Carica generazioni e contestualmente le varianti di base
     setIsLoadingGenerations(true);
     setIsLoadingVariants(true);
     try {
@@ -326,7 +305,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }
   };
 
-  // Gestione cambio generazione
   const handleGenerationChange = async (generation: string) => {
     setSelectedGeneration(generation);
     setCascadeError(null);
@@ -354,20 +332,17 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     }
   };
 
-  // Selezione della variante ufficiale
   const handleSelectVariant = (variant: CatalogVehicle) => {
     setSelectedCatalogVehicle(variant);
     setFormError(null);
     setConfirmYearMismatch(false);
   };
 
-  // Rimozione / Sostituzione variante selezionata
   const handleClearSelectedCatalog = () => {
     setSelectedCatalogVehicle(null);
     setConfirmYearMismatch(false);
   };
 
-  // Controllo coerenza anni produzione con anno di immatricolazione
   const yearNumber = year ? Number(year) : null;
   const isYearMismatch = Boolean(
     selectedCatalogVehicle &&
@@ -376,31 +351,28 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
         (selectedCatalogVehicle.year_to && yearNumber > selectedCatalogVehicle.year_to))
   );
 
-  // 4. Salvataggio veicolo
-  // 4. Salvataggio veicolo
   const executeSubmit = async (andOpenPartsExtractor = false) => {
     setFormError(null);
 
     if (!selectedCatalogVehicle) {
       setFormError(
-        'È obbligatorio selezionare un veicolo dal catalogo centrale ufficiale Autopia. Non è consentito inserire marche o modelli inventati.'
+        'Seleziona prima un modello dal catalogo Autopia per procedere.'
       );
       return;
     }
 
     if (yearNumber && (isNaN(yearNumber) || yearNumber < 1950 || yearNumber > 2035)) {
-      setFormError('Inserisci un anno di immatricolazione valido (tra 1950 e 2035)');
+      setFormError('Inserisci un anno di immatricolazione valido (tra 1950 e 2035).');
       return;
     }
 
     if (isYearMismatch && !confirmYearMismatch) {
       setFormError(
-        `L'anno di immatricolazione (${yearNumber}) non rientra nel periodo di produzione del modello (${selectedCatalogVehicle.year_from || '—'} - ${selectedCatalogVehicle.year_to || 'in corso'}). Spunta la casella di conferma se si tratta di immatricolazione speciale o prima registrazione tardiva.`
+        `L'anno di immatricolazione (${yearNumber}) non rientra negli anni standard del modello (${selectedCatalogVehicle.year_from || '—'} - ${selectedCatalogVehicle.year_to || 'in corso'}). Conferma la casella dedicata per procedere.`
       );
       return;
     }
 
-    // Costruzione note strutturate con eventuale chilometraggio
     let finalNotes = notes.trim();
     if (mileage.trim()) {
       const cleanKm = mileage.trim().replace(/\D/g, '');
@@ -414,7 +386,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
     setIsSubmitting(true);
     try {
       if (isEditing && vehicleToEdit) {
-        // Aggiornamento veicolo esistente
         const { data, error } = await updateSellerVehicle(sellerId, vehicleToEdit.id, {
           catalog_vehicle_id: selectedCatalogVehicle.id,
           make: selectedCatalogVehicle.make,
@@ -443,7 +414,6 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
           onClose();
         }
       } else {
-        // Creazione nuovo veicolo collegato al catalogo
         const { data, error } = await createSellerVehicle(sellerId, {
           catalog_vehicle_id: selectedCatalogVehicle.id,
           make: selectedCatalogVehicle.make,
@@ -488,25 +458,20 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs select-none">
-      <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#10201E]/45 backdrop-blur-[2px] select-none font-sans">
+      <div className="w-full max-w-4xl bg-white border border-[#E2E8E7] rounded-2xl shadow-xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Intestazione Modal */}
-        <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <DatabaseIcon className="w-4 h-4" />
+        <div className="px-6 py-4 bg-[#FAFBFB] border-b border-[#E2E8E7] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center">
+              <DatabaseIcon className="w-4.5 h-4.5" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-sm font-bold text-slate-100">
-                  {isEditing ? 'Modifica Scheda Veicolo Demolito' : 'Registra Nuovo Veicolo Demolito'}
-                </h2>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded border bg-amber-950/40 text-amber-300 border-amber-800/40 uppercase">
-                  Catalogo Ufficiale Autopia
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Collegamento certificato alla banca dati `public.vehicles` per tracciabilità ricambi
+              <h2 className="text-sm font-bold text-[#1A2322]">
+                {isEditing ? 'Modifica Scheda Veicolo' : 'Registra Nuovo Veicolo'}
+              </h2>
+              <p className="text-xs text-[#5C6B68]">
+                Abbina il veicolo al catalogo ufficiale Autopia e compila i dati dell'esemplare
               </p>
             </div>
           </div>
@@ -514,246 +479,209 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-100 hover:bg-slate-800 p-1.5 rounded-lg transition-colors cursor-pointer"
+            className="text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] p-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Corpo Scrollabile */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs font-sans">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
           {formError && (
-            <div className="p-3 bg-red-950/60 border border-red-800/70 rounded-lg text-red-200 flex items-start space-x-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <span>{formError}</span>
-            </div>
+            <AlertBanner tone="danger">{formError}</AlertBanner>
           )}
 
-          {/* SEZIONE 1: SELEZIONE DEL MODELLO DAL CATALOGO CENTRALE */}
+          {/* SEZIONE 1: SELEZIONE DEL MODELLO */}
           <div className="space-y-3">
-            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center justify-between pb-1 border-b border-slate-800">
-              <div className="flex items-center space-x-1.5">
-                <Car className="w-3.5 h-3.5 text-amber-400" />
-                <span>1. Selezione Veicolo dal Catalogo Centrale Autopia</span>
+            <div className="flex items-center justify-between pb-1.5 border-b border-[#EEF2F1]">
+              <div className="flex items-center gap-2 font-bold text-[#074E44] text-xs">
+                <Car className="w-4 h-4" />
+                <span>1. Modello dal Catalogo Autopia</span>
               </div>
               {selectedCatalogVehicle && (
-                <span className="text-[10px] text-emerald-400 font-normal flex items-center space-x-1">
+                <StatusBadge tone="success">
                   <CheckCircle2 className="w-3 h-3" />
-                  <span>Variante Collegata</span>
-                </span>
+                  <span>Modello collegato</span>
+                </StatusBadge>
               )}
             </div>
 
-            {/* Loading veicolo catalogo collegato in modalità modifica */}
             {isLoadingCatalogItem && (
-              <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-center space-x-2 text-slate-400">
-                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                <span>Caricamento specifiche dal catalogo centrale...</span>
+              <div className="p-4 bg-[#F7FAF9] border border-[#E2E8E7] rounded-xl flex items-center justify-center gap-2 text-[#5C6B68]">
+                <Loader2 className="w-4 h-4 animate-spin text-[#074E44]" />
+                <span>Caricamento specifiche dal catalogo...</span>
               </div>
             )}
 
-            {/* Errore caricamento catalogo collegato */}
             {catalogLoadError && !isLoadingCatalogItem && (
-              <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-lg text-amber-200 flex items-start justify-between">
-                <div className="flex items-start space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold block">Attenzione: {catalogLoadError}</span>
-                    <span className="text-[11px] text-slate-400">
-                      Seleziona una variante dal catalogo sottostante per associare o correggere il veicolo.
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <AlertBanner tone="warning" title={catalogLoadError}>
+                Seleziona una variante dal catalogo sottostante per associare o correggere il modello.
+              </AlertBanner>
             )}
 
-            {/* CASO A: VARIANTE CATALOGO GIÀ SELEZIONATA */}
             {selectedCatalogVehicle && !isLoadingCatalogItem ? (
-              <div className="bg-slate-950 border-2 border-emerald-500/40 rounded-xl p-4 space-y-3 shadow-lg shadow-emerald-950/20">
-                <div className="flex items-start justify-between">
+              <div className="bg-[#F7FAF9] border border-[#C6DFDA] rounded-xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
                   <div className="space-y-0.5">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-base font-bold text-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-bold text-[#1A2322]">
                         {selectedCatalogVehicle.make} {selectedCatalogVehicle.model}
                       </span>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 uppercase flex items-center space-x-1">
-                        <CheckCircle2 className="w-2.5 h-2.5" />
-                        <span>Catalogo Autopia Certificato</span>
-                      </span>
+                      <StatusBadge tone="brand">Catalogo Autopia</StatusBadge>
                     </div>
-                    <div className="text-xs text-amber-400 font-medium">
+                    <div className="text-xs text-[#074E44] font-medium">
                       {selectedCatalogVehicle.version || 'Versione standard'}
-                      {selectedCatalogVehicle.generation ? ` • Serie ${selectedCatalogVehicle.generation}` : ''}
+                      {selectedCatalogVehicle.generation ? ` · Serie ${selectedCatalogVehicle.generation}` : ''}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleClearSelectedCatalog}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs flex items-center space-x-1 transition-colors cursor-pointer"
-                  >
+                  <Button type="button" variant="secondary" size="xs" onClick={handleClearSelectedCatalog}>
                     <RefreshCw className="w-3 h-3" />
-                    <span>Cambia Modello</span>
-                  </button>
+                    <span>Cambia modello</span>
+                  </Button>
                 </div>
 
-                {/* Specifiche tecniche ufficiali precompilate dal catalogo */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-800/80 text-[11px]">
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Anni Produzione:</span>
-                    <span className="text-slate-200 font-semibold font-mono">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2 border-t border-[#E2E8E7] text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Anni produzione</span>
+                    <span className="text-[#1A2322] font-semibold font-mono tabular-nums">
                       {selectedCatalogVehicle.year_from || '—'} – {selectedCatalogVehicle.year_to || 'in corso'}
                     </span>
                   </div>
 
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Alimentazione:</span>
-                    <span className="text-slate-200 font-semibold">{selectedCatalogVehicle.fuel_type || '—'}</span>
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Alimentazione</span>
+                    <span className="text-[#1A2322] font-semibold">{selectedCatalogVehicle.fuel_type || '—'}</span>
                   </div>
 
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Codice Motore:</span>
-                    <span className="text-slate-200 font-semibold font-mono">{selectedCatalogVehicle.engine || '—'}</span>
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Codice motore</span>
+                    <span className="text-[#1A2322] font-semibold font-mono">{selectedCatalogVehicle.engine || '—'}</span>
                   </div>
 
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Potenza:</span>
-                    <span className="text-slate-200 font-semibold">{selectedCatalogVehicle.power || '—'}</span>
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Potenza</span>
+                    <span className="text-[#1A2322] font-semibold">{selectedCatalogVehicle.power || '—'}</span>
                   </div>
 
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Cambio:</span>
-                    <span className="text-slate-200">{selectedCatalogVehicle.transmission || '—'}</span>
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Cambio</span>
+                    <span className="text-[#1A2322] font-semibold">{selectedCatalogVehicle.transmission || '—'}</span>
                   </div>
 
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Carrozzeria / Porte:</span>
-                    <span className="text-slate-200">
-                      {selectedCatalogVehicle.body_style || '—'} {selectedCatalogVehicle.doors ? `(${selectedCatalogVehicle.doors}p)` : ''}
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-900/70 p-2 rounded border border-slate-800 sm:col-span-2">
-                    <span className="text-slate-500 block text-[10px]">ID Catalogo Centrale:</span>
-                    <span className="text-slate-400 font-mono text-[10px] truncate block" title={selectedCatalogVehicle.id}>
-                      {selectedCatalogVehicle.id}
+                  <div className="bg-white p-2.5 rounded-lg border border-[#E2E8E7]">
+                    <span className="text-[#5C6B68] block text-[11px]">Carrozzeria</span>
+                    <span className="text-[#1A2322] font-semibold">
+                      {selectedCatalogVehicle.body_style || '—'}{' '}
+                      {selectedCatalogVehicle.doors ? `(${selectedCatalogVehicle.doors}p)` : ''}
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              /* CASO B: SELETTORE APERTO (RICERCA RAPIDA O NAVIGAZIONE A CASCATA) */
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-4">
-                {/* Switch Modalità: Ricerca Rapida vs A Cascata */}
-                <div className="flex items-center space-x-2 border-b border-slate-800/80 pb-3">
+              <div className="bg-[#F7FAF9] border border-[#E2E8E7] rounded-xl p-4 space-y-4">
+                <div className="inline-flex items-center gap-1 p-1 bg-[#E9EFEE] rounded-lg">
                   <button
                     type="button"
                     onClick={() => setSelectionMode('quick')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       selectionMode === 'quick'
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        ? 'bg-white text-[#074E44] shadow-xs'
+                        : 'text-[#5C6B68] hover:text-[#1A2322]'
                     }`}
                   >
                     <Search className="w-3.5 h-3.5" />
-                    <span>Ricerca Rapida Globale</span>
+                    <span>Ricerca rapida</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setSelectionMode('cascade')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       selectionMode === 'cascade'
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        ? 'bg-white text-[#074E44] shadow-xs'
+                        : 'text-[#5C6B68] hover:text-[#1A2322]'
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5" />
-                    <span>Selezione Guidata (Marca → Modello → Variante)</span>
+                    <span>Selezione guidata</span>
                   </button>
                 </div>
 
-                {/* MODALITÀ 1: RICERCA RAPIDA GLOBALE */}
                 {selectionMode === 'quick' && (
                   <div className="space-y-3">
                     <div className="relative">
-                      <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                      <Search className="w-4 h-4 text-[#7B8B88] absolute left-3 top-2.5" />
                       <input
                         type="text"
-                        placeholder="Digita per cercare: es. 'Fiat Panda 1.2', 'Golf 7 TDI', 'Ford Fiesta', 'Clio IV'..."
+                        placeholder="Digita marca, modello o versione (es. 'Fiat Panda 1.2', 'Golf 7 TDI')..."
                         value={quickSearchTerm}
                         onChange={(e) => handleQuickSearchChange(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-8 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 text-xs"
+                        className={`${uiClasses.input} pl-9 pr-8`}
                       />
                       {isSearchingQuick && (
-                        <Loader2 className="w-4 h-4 text-amber-400 animate-spin absolute right-3 top-2.5" />
+                        <Loader2 className="w-4 h-4 text-[#074E44] animate-spin absolute right-3 top-2.5" />
                       )}
                     </div>
 
                     {quickSearchError && (
-                      <div className="p-3 bg-red-950/40 border border-red-800/50 rounded-lg text-red-300 text-xs flex items-center space-x-2">
-                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                        <span>{quickSearchError}</span>
-                      </div>
+                      <AlertBanner tone="danger">{quickSearchError}</AlertBanner>
                     )}
 
-                    {/* Risultati Ricerca Rapida */}
                     {hasSearchedQuick && !isSearchingQuick && quickSearchResults.length === 0 && !quickSearchError && (
-                      <div className="p-4 bg-slate-900/50 border border-dashed border-slate-800 rounded-lg text-center text-slate-400 text-xs">
-                        Nessun veicolo trovato nel catalogo con il termine inserito. Prova a cercare per sola marca o solo modello.
+                      <div className="p-4 bg-white border border-dashed border-[#D7E0DE] rounded-xl text-center text-[#5C6B68] text-xs">
+                        Nessun modello trovato. Prova a cercare solo per marca o modello.
                       </div>
                     )}
 
                     {quickSearchResults.length > 0 && (
                       <div className="space-y-2">
-                        <span className="text-[11px] font-semibold text-slate-400 block">
-                          Risultati trovati nel catalogo ({quickSearchResults.length}): seleziona la variante esatta
+                        <span className="text-[11px] font-semibold text-[#5C6B68] block">
+                          Risultati trovati ({quickSearchResults.length})
                         </span>
                         <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
                           {quickSearchResults.map((variant) => (
                             <div
                               key={variant.id}
                               onClick={() => handleSelectVariant(variant)}
-                              className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800/80 hover:border-amber-500/50 rounded-lg transition-colors cursor-pointer flex items-center justify-between group"
+                              className="p-2.5 bg-white hover:bg-[#EAF3F1]/50 border border-[#E2E8E7] hover:border-[#074E44]/50 rounded-lg transition-colors cursor-pointer flex items-center justify-between group"
                             >
                               <div className="space-y-0.5">
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-bold text-slate-100 text-xs group-hover:text-amber-400 transition-colors">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-bold text-[#1A2322] text-xs group-hover:text-[#074E44]">
                                     {variant.make} {variant.model}
                                   </span>
-                                  <span className="text-[10px] text-slate-400">
-                                    {variant.generation ? `[${variant.generation}]` : ''}
-                                  </span>
-                                  <span className="text-[10px] font-mono text-slate-400">
-                                    ({variant.year_from || '—'} - {variant.year_to || 'oggi'})
+                                  {variant.generation && (
+                                    <span className="text-[11px] text-[#5C6B68]">[{variant.generation}]</span>
+                                  )}
+                                  <span className="text-[11px] font-mono tabular-nums text-[#5C6B68]">
+                                    ({variant.year_from || '—'}–{variant.year_to || 'oggi'})
                                   </span>
                                 </div>
-                                <div className="text-[11px] text-slate-400 flex items-center space-x-2">
+                                <div className="text-[11px] text-[#5C6B68] flex flex-wrap items-center gap-2">
                                   <span>{variant.version || 'Versione standard'}</span>
                                   {variant.engine && (
                                     <>
-                                      <span>•</span>
-                                      <span className="text-slate-300 font-mono">{variant.engine}</span>
+                                      <span>·</span>
+                                      <span className="text-[#1A2322] font-mono">{variant.engine}</span>
                                     </>
                                   )}
                                   {variant.power && (
                                     <>
-                                      <span>•</span>
-                                      <span className="text-slate-300">{variant.power}</span>
+                                      <span>·</span>
+                                      <span>{variant.power}</span>
                                     </>
                                   )}
                                   {variant.fuel_type && (
                                     <>
-                                      <span>•</span>
-                                      <span className="text-amber-400/90 font-medium">{variant.fuel_type}</span>
+                                      <span>·</span>
+                                      <span className="text-[#074E44] font-semibold">{variant.fuel_type}</span>
                                     </>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="text-slate-500 group-hover:text-amber-400 pl-2">
-                                <ChevronRight className="w-4 h-4" />
-                              </div>
+                              <ChevronRight className="w-4 h-4 text-[#7B8B88] group-hover:text-[#074E44] shrink-0" />
                             </div>
                           ))}
                         </div>
@@ -762,63 +690,51 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                   </div>
                 )}
 
-                {/* MODALITÀ 2: SELEZIONE GUIDATA A CASCATA */}
                 {selectionMode === 'cascade' && (
                   <div className="space-y-4">
-                    {cascadeError && (
-                      <div className="p-3 bg-red-950/40 border border-red-800/50 rounded-lg text-red-300 text-xs flex items-center space-x-2">
-                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                        <span>{cascadeError}</span>
-                      </div>
-                    )}
+                    {cascadeError && <AlertBanner tone="danger">{cascadeError}</AlertBanner>}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {/* Step 1: Marca */}
                       <div>
-                        <label className="text-slate-300 font-semibold block mb-1">
-                          1. Marca dal Catalogo <span className="text-amber-400">*</span>
-                        </label>
+                        <label className={uiClasses.label}>1. Marca *</label>
                         <select
                           value={selectedMake}
                           onChange={(e) => handleMakeChange(e.target.value)}
                           disabled={isLoadingMakes}
-                          className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-50"
+                          className={uiClasses.select}
                         >
                           <option value="">
                             {isLoadingMakes
-                              ? 'Caricamento catalogo marche...'
+                              ? 'Caricamento marche...'
                               : availableMakes.length > 0
-                              ? `Seleziona marca (${availableMakes.length} marche)...`
-                              : 'Seleziona marca...'}
+                              ? `Seleziona marca (${availableMakes.length})`
+                              : 'Seleziona marca'}
                           </option>
                           {availableMakes.map((m) => {
                             const detail = makeDetails.find((d) => d.name === m);
                             return (
                               <option key={m} value={m}>
-                                {m} {detail ? `(${detail.count} ver.)` : ''}
+                                {m} {detail ? `(${detail.count})` : ''}
                               </option>
                             );
                           })}
                         </select>
                       </div>
 
-                      {/* Step 2: Modello */}
                       <div>
-                        <label className="text-slate-300 font-semibold block mb-1">
-                          2. Modello <span className="text-amber-400">*</span>
-                        </label>
+                        <label className={uiClasses.label}>2. Modello *</label>
                         <select
                           value={selectedModel}
                           onChange={(e) => handleModelChange(e.target.value)}
                           disabled={!selectedMake || isLoadingModels}
-                          className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-50"
+                          className={uiClasses.select}
                         >
                           <option value="">
                             {!selectedMake
                               ? 'Prima seleziona una marca'
                               : isLoadingModels
-                              ? 'Caricamento tutti i modelli...'
-                              : `Seleziona modello (${availableModels.length} disponibili)...`}
+                              ? 'Caricamento modelli...'
+                              : `Seleziona modello (${availableModels.length})`}
                           </option>
                           {availableModels.map((m) => (
                             <option key={m} value={m}>
@@ -828,23 +744,20 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                         </select>
                       </div>
 
-                      {/* Step 3: Generazione / Serie */}
                       <div>
-                        <label className="text-slate-300 font-semibold block mb-1">
-                          3. Serie / Generazione (Opzionale)
-                        </label>
+                        <label className={uiClasses.label}>3. Serie / Generazione</label>
                         <select
                           value={selectedGeneration}
                           onChange={(e) => handleGenerationChange(e.target.value)}
                           disabled={!selectedModel || isLoadingGenerations}
-                          className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-50"
+                          className={uiClasses.select}
                         >
                           <option value="">
                             {!selectedModel
                               ? 'Prima seleziona un modello'
                               : availableGenerations.length === 0
-                              ? 'Tutte le serie disponibili'
-                              : 'Tutte le serie...'}
+                              ? 'Tutte le serie'
+                              : 'Tutte le serie'}
                           </option>
                           {availableGenerations.map((g) => (
                             <option key={g} value={g}>
@@ -855,38 +768,36 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Step 4: Lista Varianti Tecniche */}
                     {selectedModel && (
-                      <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                      <div className="space-y-2 pt-2 border-t border-[#E2E8E7]">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-slate-300">
-                            4. Seleziona la variante tecnica esatta ({availableVariants.length} nel database):
+                          <span className="text-[11px] font-semibold text-[#1A2322]">
+                            4. Seleziona la variante ({availableVariants.length})
                           </span>
                           {isLoadingVariants && (
-                            <span className="text-slate-400 text-[10px] flex items-center space-x-1">
-                              <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                              <span>Caricamento varianti...</span>
+                            <span className="text-[#5C6B68] text-[11px] flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin text-[#074E44]" />
+                              <span>Caricamento...</span>
                             </span>
                           )}
                         </div>
 
-                        {/* Barra filtro rapido varianti se presenti più varianti */}
                         {availableVariants.length > 4 && (
                           <div className="relative">
-                            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                            <Search className="w-3.5 h-3.5 text-[#7B8B88] absolute left-2.5 top-2.5" />
                             <input
                               type="text"
-                              placeholder="Filtra per motore, alimentazione o allestimento (es. 1.2, TDI, GPL, 4x4)..."
+                              placeholder="Filtra per motore, alimentazione o allestimento..."
                               value={variantFilterTerm}
                               onChange={(e) => setVariantFilterTerm(e.target.value)}
-                              className="w-full bg-slate-900 border border-slate-800 rounded pl-8 pr-3 py-1 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                              className={`${uiClasses.input} pl-8`}
                             />
                           </div>
                         )}
 
                         {!isLoadingVariants && availableVariants.length === 0 && (
-                          <div className="p-3 bg-slate-900/60 rounded border border-slate-800 text-slate-400 text-center">
-                            Nessuna variante trovata nel catalogo per questo modello.
+                          <div className="p-3 bg-white rounded-lg border border-[#E2E8E7] text-[#5C6B68] text-center">
+                            Nessuna variante trovata per questo modello.
                           </div>
                         )}
 
@@ -909,53 +820,50 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                               <div
                                 key={variant.id}
                                 onClick={() => handleSelectVariant(variant)}
-                                className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800/80 hover:border-amber-500/50 rounded-lg transition-colors cursor-pointer flex items-center justify-between group"
+                                className="p-2.5 bg-white hover:bg-[#EAF3F1]/50 border border-[#E2E8E7] hover:border-[#074E44]/50 rounded-lg transition-colors cursor-pointer flex items-center justify-between group"
                               >
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-slate-100 text-xs group-hover:text-amber-400 transition-colors">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-semibold text-[#1A2322] text-xs group-hover:text-[#074E44]">
                                       {variant.version || 'Allestimento base'}
                                     </span>
                                     {variant.generation && (
-                                      <span className="text-[10px] text-slate-400 font-mono">
+                                      <span className="text-[11px] text-[#5C6B68] font-mono">
                                         [{variant.generation}]
                                       </span>
                                     )}
-                                    <span className="text-[10px] font-mono text-slate-400">
-                                      ({variant.year_from || '—'} - {variant.year_to || 'in corso'})
+                                    <span className="text-[11px] font-mono tabular-nums text-[#5C6B68]">
+                                      ({variant.year_from || '—'}–{variant.year_to || 'in corso'})
                                     </span>
                                   </div>
-                                  <div className="text-[11px] text-slate-400 flex items-center space-x-2">
-                                    <span className="text-amber-400/90 font-medium">
-                                      {variant.fuel_type || 'Alim. standard'}
+                                  <div className="text-[11px] text-[#5C6B68] flex flex-wrap items-center gap-2">
+                                    <span className="text-[#074E44] font-semibold">
+                                      {variant.fuel_type || 'Standard'}
                                     </span>
                                     {variant.engine && (
                                       <>
-                                        <span>•</span>
-                                        <span className="text-slate-300 font-mono">{variant.engine}</span>
+                                        <span>·</span>
+                                        <span className="text-[#1A2322] font-mono">{variant.engine}</span>
                                       </>
                                     )}
                                     {variant.power && (
                                       <>
-                                        <span>•</span>
-                                        <span className="text-slate-300">{variant.power}</span>
+                                        <span>·</span>
+                                        <span>{variant.power}</span>
                                       </>
                                     )}
                                     {variant.transmission && (
                                       <>
-                                        <span>•</span>
-                                        <span className="text-slate-400">{variant.transmission}</span>
+                                        <span>·</span>
+                                        <span>{variant.transmission}</span>
                                       </>
                                     )}
                                   </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  className="px-2.5 py-1 bg-amber-500/20 group-hover:bg-amber-500 text-amber-300 group-hover:text-slate-950 font-semibold rounded text-[11px] transition-colors"
-                                >
+                                <span className="px-2.5 py-1 bg-[#EAF3F1] group-hover:bg-[#074E44] text-[#074E44] group-hover:text-white font-semibold rounded-md text-[11px] transition-colors shrink-0">
                                   Seleziona
-                                </button>
+                                </span>
                               </div>
                             ))}
                         </div>
@@ -967,19 +875,16 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
             )}
           </div>
 
-          {/* SEZIONE 2: DATI DELL'ESEMPLARE FISICO NEL PIAZZALE */}
+          {/* SEZIONE 2: DATI ESEMPLARE */}
           <div className="space-y-3">
-            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
-              <Tag className="w-3.5 h-3.5" />
-              <span>2. Dati Esemplare Fisico Autodemolizione</span>
+            <div className="flex items-center gap-2 font-bold text-[#074E44] text-xs pb-1.5 border-b border-[#EEF2F1]">
+              <Tag className="w-4 h-4" />
+              <span>2. Dati dell'esemplare</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {/* Anno Immatricolazione Singolo Esemplare */}
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Anno Immatricolazione
-                </label>
+                <label className={uiClasses.label}>Anno immatricolazione</label>
                 <input
                   type="number"
                   placeholder="Es. 2018"
@@ -990,15 +895,12 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                     setYear(e.target.value);
                     setConfirmYearMismatch(false);
                   }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} tabular-nums`}
                 />
               </div>
 
-              {/* Chilometraggio */}
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Chilometraggio (Km)
-                </label>
+                <label className={uiClasses.label}>Chilometraggio (km)</label>
                 <input
                   type="number"
                   placeholder="Es. 145000"
@@ -1006,115 +908,93 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                   max="2000000"
                   value={mileage}
                   onChange={(e) => setMileage(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} tabular-nums`}
                 />
               </div>
 
-              {/* Targa */}
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Targa Veicolo
-                </label>
+                <label className={uiClasses.label}>Targa</label>
                 <input
                   type="text"
                   placeholder="Es. AB123CD"
                   maxLength={10}
                   value={plate}
                   onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 font-mono uppercase focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} font-mono uppercase`}
                 />
               </div>
 
-              {/* VIN */}
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Numero di Telaio (VIN)
-                </label>
+                <label className={uiClasses.label}>Numero di telaio (VIN)</label>
                 <input
                   type="text"
                   placeholder="Es. WAUZZZ8K9DA123456"
                   maxLength={17}
                   value={vin}
                   onChange={(e) => setVin(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 font-mono uppercase focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} font-mono uppercase`}
                 />
               </div>
             </div>
 
-            {/* Avviso Coerenza Anno Produzione con Checkbox di Conferma */}
             {isYearMismatch && selectedCatalogVehicle && (
-              <div className="p-3 bg-amber-950/60 border border-amber-800/80 rounded-lg text-amber-200 space-y-2">
-                <div className="flex items-start space-x-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold block text-xs">
-                      Avviso Anno Immatricolazione:
-                    </span>
-                    <span className="text-[11px] text-amber-300">
-                      L'anno inserito ({yearNumber}) non rientra nell'intervallo di produzione standard
-                      registrato nel catalogo Autopia per questo modello ({selectedCatalogVehicle.year_from || '—'} –{' '}
-                      {selectedCatalogVehicle.year_to || 'oggi'}).
-                    </span>
-                  </div>
-                </div>
-
-                <label className="flex items-center space-x-2 text-[11px] text-slate-200 cursor-pointer pt-1 border-t border-amber-800/50">
+              <AlertBanner tone="warning" title="Anno fuori dall'intervallo standard">
+                <p>
+                  L'anno inserito ({yearNumber}) differisce dal periodo standard ({selectedCatalogVehicle.year_from || '—'}–{selectedCatalogVehicle.year_to || 'oggi'}).
+                </p>
+                <label className="flex items-center gap-2 text-xs text-[#1A2322] cursor-pointer mt-2 font-medium">
                   <input
                     type="checkbox"
                     checked={confirmYearMismatch}
                     onChange={(e) => setConfirmYearMismatch(e.target.checked)}
-                    className="rounded border-amber-600 text-amber-500 focus:ring-amber-500 bg-slate-900 cursor-pointer"
+                    className="rounded border-amber-500 text-[#074E44] focus:ring-[#074E44] cursor-pointer"
                   />
-                  <span>
-                    Confermo che l'immatricolazione o prima registrazione differisce dagli anni standard del catalogo
-                  </span>
+                  <span>Confermo comunque l'anno di immatricolazione inserito</span>
                 </label>
-              </div>
+              </AlertBanner>
             )}
           </div>
 
-          {/* SEZIONE 3: ACCETTAZIONE E GESTIONE PIAZZALE */}
+          {/* SEZIONE 3: PIAZZALE E STATO */}
           <div className="space-y-3">
-            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
-              <MapPin className="w-3.5 h-3.5" />
-              <span>3. Accettazione Piazzale & Stato Lavorazione</span>
+            <div className="flex items-center gap-2 font-bold text-[#074E44] text-xs pb-1.5 border-b border-[#EEF2F1]">
+              <MapPin className="w-4 h-4" />
+              <span>3. Piazzale e stato lavorazione</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1 flex items-center space-x-1">
-                  <Calendar className="w-3 h-3 text-slate-400" />
-                  <span>Data Ingresso Piazzale</span>
+                <label className={uiClasses.label}>
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-[#5C6B68]" />
+                    <span>Data ingresso</span>
+                  </span>
                 </label>
                 <input
                   type="date"
                   value={arrivalDate}
                   onChange={(e) => setArrivalDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500"
+                  className={uiClasses.input}
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Ubicazione / Fila Piazzale
-                </label>
+                <label className={uiClasses.label}>Posizione in piazzale</label>
                 <input
                   type="text"
                   placeholder="Es. Piazzale Nord, Fila C4"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                  className={uiClasses.input}
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Stato Lavorazione
-                </label>
+                <label className={uiClasses.label}>Stato lavorazione</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className={uiClasses.select}
                 >
                   {VEHICLE_STATUS_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -1126,119 +1006,94 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
             </div>
           </div>
 
-          {/* SEZIONE 4: NOTE E DOCUMENTAZIONE */}
+          {/* SEZIONE 4: NOTE E FOTO */}
           <div className="space-y-3">
-            <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
-              <FileText className="w-3.5 h-3.5" />
-              <span>4. Documentazione & Note Interne</span>
+            <div className="flex items-center gap-2 font-bold text-[#074E44] text-xs pb-1.5 border-b border-[#EEF2F1]">
+              <FileText className="w-4 h-4" />
+              <span>4. Note e immagine</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  URL Fotografia Esemplare (Opzionale)
-                </label>
+                <label className={uiClasses.label}>URL fotografia (opzionale)</label>
                 <input
                   type="url"
                   placeholder="https://..."
                   value={photoUrl}
                   onChange={(e) => setPhotoUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  className={`${uiClasses.input} font-mono`}
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
-                  Note Operative Interne
-                </label>
+                <label className={uiClasses.label}>Note interne</label>
                 <textarea
                   rows={2}
-                  placeholder="Es. Esemplare incidentato lato posteriore, motore integro, centralina recuperabile..."
+                  placeholder="Es. Esemplare completo lato anteriore, motore integro..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 text-xs"
+                  className={uiClasses.textarea}
                 />
               </div>
             </div>
           </div>
         </form>
 
-        {/* Footer Pulsanti Azione */}
-        <div className="px-6 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-2">
+        {/* Footer Azioni */}
+        <div className="px-6 py-3.5 bg-[#FAFBFB] border-t border-[#E2E8E7] flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="text-xs">
             {!selectedCatalogVehicle ? (
-              <span className="text-[11px] text-amber-400/90 font-medium flex items-center space-x-1">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                <span>Seleziona un modello dal catalogo centrale per procedere</span>
+              <span className="text-amber-700 font-medium">
+                Seleziona un modello dal catalogo per salvare
               </span>
             ) : (
-              <span className="text-[11px] text-slate-400">
-                Veicolo collegato a: <strong className="text-slate-200">{selectedCatalogVehicle.make} {selectedCatalogVehicle.model}</strong>
+              <span className="text-[#5C6B68]">
+                Modello: <strong className="text-[#1A2322]">{selectedCatalogVehicle.make} {selectedCatalogVehicle.model}</strong>
               </span>
             )}
           </div>
 
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
-            >
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSubmitting}>
               Annulla
-            </button>
+            </Button>
 
             {isEditing ? (
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
+                loading={isSubmitting}
                 onClick={() => executeSubmit(false)}
                 disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-colors shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Salvataggio...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Aggiorna Veicolo</span>
-                  </>
-                )}
-              </button>
+                {!isSubmitting && <Save className="w-3.5 h-3.5" />}
+                <span>{isSubmitting ? 'Salvataggio...' : 'Aggiorna veicolo'}</span>
+              </Button>
             ) : (
               <>
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => executeSubmit(false)}
                   disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-semibold rounded text-xs flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Salva il veicolo nel parco auto senza estrarre ricambi ora"
                 >
-                  <Save className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Salva Solo Veicolo</span>
-                </button>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Salva veicolo</span>
+                </Button>
 
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="sm"
+                  loading={isSubmitting}
                   onClick={() => executeSubmit(true)}
                   disabled={isSubmitting || !selectedCatalogVehicle || (isYearMismatch && !confirmYearMismatch)}
-                  className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold rounded text-xs flex items-center space-x-1.5 transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Salva il veicolo e apri subito la selezione rapida ricambi consigliati"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Salvataggio...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Salva e Recupera Ricambi →</span>
-                    </>
-                  )}
-                </button>
+                  {!isSubmitting && <Sparkles className="w-3.5 h-3.5" />}
+                  <span>Salva e recupera ricambi</span>
+                </Button>
               </>
             )}
           </div>

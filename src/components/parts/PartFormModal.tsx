@@ -8,23 +8,16 @@ import {
   Layers,
   MapPin,
   FileText,
-  AlertCircle,
   Loader2,
   Check,
   Search,
   Database as DatabaseIcon,
   Sparkles,
-  RefreshCw,
   ChevronRight,
   Save,
   CheckCircle2,
 } from 'lucide-react';
-import type {
-  InventoryItem,
-  PartCategory,
-  PART_CONDITIONS,
-  SIDES_OPTIONS,
-} from '../../types/inventory';
+import type { InventoryItem, PartCategory } from '../../types/inventory';
 import type { SellerVehicle, CatalogVehicle, CatalogMakeInfo } from '../../types/vehicles';
 import {
   createInventoryItem,
@@ -43,6 +36,7 @@ import {
   generateSmartPartDescription,
   detectSideFromName,
 } from '../../services/recommendedPartsService';
+import { uiClasses, Button, AlertBanner } from '../ui/DesignSystem';
 
 interface PartFormModalProps {
   sellerId: string;
@@ -82,28 +76,24 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
       ? String(itemToEdit.shipping_cost)
       : '12.00'
   );
-  const [status, setStatus] = useState<InventoryItem['status']>(itemToEdit?.status || 'inactive');
 
   const [categoryId, setCategoryId] = useState<string>('');
   const [categories, setCategories] = useState<PartCategory[]>([]);
   const [yardVehicles, setYardVehicles] = useState<SellerVehicle[]>([]);
-  const [isLoadingMeta, setIsLoadingMeta] = useState(true);
+  const [, setIsLoadingMeta] = useState(true);
 
-  // Modalità selezione origine veicolo: 'yard' (Piazzale) | 'catalog' (Banca dati 11.000+)
   const [originType, setOriginType] = useState<'yard' | 'catalog'>('yard');
   const [selectedSellerVehicleId, setSelectedSellerVehicleId] = useState<string>(
     itemToEdit?.seller_vehicle_id || initialSellerVehicleId || ''
   );
   const [selectedCatalogVehicle, setSelectedCatalogVehicle] = useState<CatalogVehicle | null>(null);
 
-  // Stato per ricerca veicolo nel catalogo 11.000+
   const [catalogSearchMode, setCatalogSearchMode] = useState<'quick' | 'cascade'>('quick');
   const [catalogSearchTerm, setCatalogSearchTerm] = useState('');
   const [catalogSearchResults, setCatalogSearchResults] = useState<CatalogVehicle[]>([]);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const [catalogSearchError, setCatalogSearchError] = useState<string | null>(null);
 
-  // Selezione guidata catalogo (Marca -> Modello -> Variante)
   const [catalogMakes, setCatalogMakes] = useState<CatalogMakeInfo[]>([]);
   const [selectedMake, setSelectedMake] = useState<string>('');
   const [catalogModels, setCatalogModels] = useState<string[]>([]);
@@ -114,10 +104,8 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Debounce ricerca catalogo
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 1. Carica metadati (categorie e veicoli piazzale)
   useEffect(() => {
     let isMounted = true;
     async function loadMeta() {
@@ -138,14 +126,12 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
           const yardList = vehsRes.data || [];
           setYardVehicles(yardList);
 
-          // Se non ci sono veicoli nel parco auto, forza la selezione dal catalogo centrale!
           if (yardList.length === 0) {
             setOriginType('catalog');
           } else if (itemToEdit?.source_vehicle_id && !itemToEdit.seller_vehicle_id) {
             setOriginType('catalog');
           }
 
-          // Se l'item ha source_vehicle_id, recupera i dettagli del veicolo di catalogo
           if (itemToEdit?.source_vehicle_id) {
             fetchCatalogVehicleById(itemToEdit.source_vehicle_id).then((res) => {
               if (isMounted && res.data) {
@@ -166,7 +152,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     };
   }, [sellerId, itemToEdit]);
 
-  // Carica marche per selezione guidata catalogo quando si passa a modalità catalogo
   useEffect(() => {
     if (originType === 'catalog' && catalogMakes.length === 0) {
       fetchCatalogMakes().then((res) => {
@@ -175,7 +160,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }
   }, [originType, catalogMakes.length]);
 
-  // Gestione ricerca rapida catalogo con debounce
   const handleCatalogSearchChange = (term: string) => {
     setCatalogSearchTerm(term);
     setCatalogSearchError(null);
@@ -206,7 +190,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }, 300);
   };
 
-  // Selezione guidata: cambio marca
   const handleMakeSelect = async (make: string) => {
     setSelectedMake(make);
     setSelectedModel('');
@@ -222,7 +205,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }
   };
 
-  // Selezione guidata: cambio modello
   const handleModelSelect = async (model: string) => {
     setSelectedModel(model);
     setCatalogVariants([]);
@@ -237,11 +219,9 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }
   };
 
-  // Quando viene selezionato un veicolo di catalogo
   const handleSelectCatalogVehicle = (vehicle: CatalogVehicle) => {
     setSelectedCatalogVehicle(vehicle);
 
-    // Auto-genera descrizione se vuota
     if (!description.trim() && title.trim()) {
       const autoDesc = generateSmartPartDescription(title.trim(), {
         make: vehicle.make,
@@ -254,14 +234,12 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
       setDescription(autoDesc);
     }
 
-    // Auto-rileva lato se non specificato
     if (!side && title.trim()) {
       const autoSide = detectSideFromName(title.trim());
       if (autoSide) setSide(autoSide);
     }
   };
 
-  // Generatore manuale di descrizione intelligente al click sul pulsante
   const handleGenerateSmartDescription = () => {
     let vehicleData: {
       make: string;
@@ -305,7 +283,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }
   };
 
-  // Salvataggio ricambio (con supporto esplicito a Bozza vs Pubblicazione)
   const executeSubmit = async (targetStatus: InventoryItem['status']) => {
     setErrorMessage(null);
 
@@ -314,18 +291,17 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
       return;
     }
 
-    // REGOLA VINCOLANTE: se il parco auto è vuoto o siamo in modalità catalogo, la selezione del veicolo dal catalogo 11.000+ è OBBLIGATORIA
     if (originType === 'catalog' || yardVehicles.length === 0) {
       if (!selectedCatalogVehicle) {
         setErrorMessage(
-          'Selezione obbligatoria del veicolo: scegli un veicolo dal catalogo ufficiale Autopia di oltre 11.000 modelli per associare la compatibilità.'
+          'Selezione obbligatoria del veicolo: scegli un veicolo dal catalogo ufficiale Autopia per associare la compatibilità.'
         );
         return;
       }
     } else if (originType === 'yard') {
       if (!selectedSellerVehicleId) {
         setErrorMessage(
-          'Seleziona il veicolo di provenienza dal piazzale o passa a "Seleziona dal Catalogo Generale".'
+          'Seleziona il veicolo di provenienza dal piazzale o passa a "Catalogo Generale".'
         );
         return;
       }
@@ -334,11 +310,10 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     const numPrice = parseFloat(price);
     if (targetStatus === 'available') {
       if (isNaN(numPrice) || numPrice <= 0) {
-        setErrorMessage('Per la pubblicazione online è obbligatorio specificare un prezzo maggiore di 0€.');
+        setErrorMessage('Per la pubblicazione online è obbligatorio specificare un prezzo maggiore di 0 €.');
         return;
       }
     } else {
-      // Se salvato come bozza, ammettiamo anche 0
       if (isNaN(numPrice) || numPrice < 0) {
         setErrorMessage('Inserisci un prezzo valido (es. 45.00 o 0 per bozza incompleta)');
         return;
@@ -353,7 +328,6 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
 
     const numShipping = shippingAvailable ? parseFloat(shippingCost) || 0 : null;
 
-    // Determinazione source_vehicle_id e seller_vehicle_id
     let finalSellerVehicleId: string | null = null;
     let finalSourceVehicleId: string | null = null;
 
@@ -392,7 +366,7 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
         });
 
         if (res.error || !res.data) {
-          setErrorMessage(res.error || 'Errore durante l\'aggiornamento del ricambio');
+          setErrorMessage(res.error || "Errore durante l'aggiornamento del ricambio");
           setIsSubmitting(false);
           return;
         }
@@ -435,29 +409,29 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-3xl my-6 overflow-hidden shadow-2xl flex flex-col text-slate-100 font-sans animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-3xl my-6 overflow-hidden shadow-2xl flex flex-col text-[#1A2322] font-sans">
         {/* Intestazione */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/70">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#EEF2F1] bg-[#FAFBFB]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] border border-[#C6DFDA] text-[#074E44] flex items-center justify-center shrink-0">
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100">
+              <h2 className="text-base font-bold text-[#162220]">
                 {isEditing ? 'Modifica Scheda Ricambio' : 'Aggiungi Nuovo Ricambio'}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#5C6B68]">
                 {isEditing
-                  ? `ID Inventario: ${itemToEdit?.id}`
-                  : 'Creazione bozza o annuncio con associazione al veicolo dal parco o dal catalogo centrale (11.000+ veicoli)'}
+                  ? `Codice interno scheda: ${itemToEdit?.id.slice(0, 8)}`
+                  : 'Crea una bozza o pubblica direttamente associando il veicolo di provenienza'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -465,124 +439,101 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
 
         {/* Form Body */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
-          {errorMessage && (
-            <div className="p-3.5 rounded-lg bg-red-950/60 border border-red-800 text-red-200 text-xs flex items-start space-x-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-              <div className="flex-1">{errorMessage}</div>
-            </div>
-          )}
+          {errorMessage && <AlertBanner tone="danger">{errorMessage}</AlertBanner>}
 
-          {/* ========================================================= */}
-          {/* SEZIONE 1: ORIGINE VEICOLO (PARCO AUTO vs CATALOGO 11.000+) */}
-          {/* ========================================================= */}
-          <div className="space-y-3 bg-slate-950/60 border border-slate-800/80 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5">
+          {/* SEZIONE 1: ORIGINE VEICOLO */}
+          <div className="space-y-3 bg-[#FAFBFB] border border-[#E2E8E7] rounded-xl p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5">
                 <Car className="w-4 h-4" />
                 <span>1. Veicolo di Provenienza & Compatibilità</span>
               </div>
 
               {yardVehicles.length > 0 && (
-                <div className="inline-flex rounded-lg p-0.5 bg-slate-900 border border-slate-800 text-xs">
+                <div className="inline-flex rounded-lg p-0.5 bg-[#EDF2F1] border border-[#D7E0DE] text-xs">
                   <button
                     type="button"
                     onClick={() => setOriginType('yard')}
                     className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
                       originType === 'yard'
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-[#074E44] text-white'
+                        : 'text-[#5C6B68] hover:text-[#1A2322]'
                     }`}
                   >
-                    Veicolo Parco Auto ({yardVehicles.length})
+                    Parco Auto ({yardVehicles.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setOriginType('catalog')}
-                    className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                    className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
                       originType === 'catalog'
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'text-slate-400 hover:text-slate-200'
+                        ? 'bg-[#074E44] text-white'
+                        : 'text-[#5C6B68] hover:text-[#1A2322]'
                     }`}
                   >
                     <DatabaseIcon className="w-3 h-3" />
-                    <span>Catalogo Generale (11.000+)</span>
+                    <span>Catalogo Generale</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Avviso se Parco Auto è vuoto */}
             {yardVehicles.length === 0 && (
-              <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-lg text-xs text-blue-200 flex items-start space-x-2">
-                <DatabaseIcon className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-blue-300">Nessun veicolo presente nel piazzale</div>
-                  <div>
-                    Non hai veicoli registrati nel tuo parco auto. Come previsto, l'associazione è{' '}
-                    <strong>obbligatoria</strong> e avviene selezionando il veicolo dal catalogo centrale
-                    Autopia di oltre 11.000 modelli.
-                  </div>
-                </div>
-              </div>
+              <AlertBanner tone="info" title="Nessun veicolo presente nel piazzale">
+                Non hai veicoli registrati nel parco auto. Associa il ricambio selezionando il veicolo dal catalogo centrale Autopia.
+              </AlertBanner>
             )}
 
-            {/* CASO A: Selezione dal Parco Auto Demolitore */}
             {originType === 'yard' && yardVehicles.length > 0 && (
               <div className="space-y-2">
-                <label className="text-xs text-slate-300 font-semibold block">
-                  Seleziona Veicolo Demolito nel Piazzale
-                </label>
+                <label className={uiClasses.label}>Seleziona Veicolo nel Piazzale</label>
                 <select
                   value={selectedSellerVehicleId}
-                  onChange={(e) => {
-                    setSelectedSellerVehicleId(e.target.value);
-                  }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  onChange={(e) => setSelectedSellerVehicleId(e.target.value)}
+                  className={uiClasses.select}
                 >
                   <option value="">-- Seleziona un veicolo dal piazzale --</option>
                   {yardVehicles.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.plate ? `[Targa: ${v.plate}] ` : ''}
-                      {v.make} {v.model} {v.generation ? `(${v.generation})` : ''} -{' '}
-                      {v.engine || ''} {v.fuel_type || ''} {v.year ? `Anno ${v.year}` : ''}
+                      {v.make} {v.model} {v.generation ? `(${v.generation})` : ''} - {v.engine || ''}{' '}
+                      {v.fuel_type || ''} {v.year ? `Anno ${v.year}` : ''}
                     </option>
                   ))}
                 </select>
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#5C6B68]">
                   <span>Il ricambio erediterà targa, telaio e compatibilità del veicolo.</span>
                   <button
                     type="button"
                     onClick={() => setOriginType('catalog')}
-                    className="text-amber-400 hover:underline cursor-pointer font-semibold"
+                    className="text-[#074E44] hover:underline cursor-pointer font-semibold"
                   >
-                    Non è nel piazzale? Seleziona dal Catalogo Generale →
+                    Non è nel piazzale? Cerca nel Catalogo Generale →
                   </button>
                 </div>
               </div>
             )}
 
-            {/* CASO B: Selezione dal Catalogo Generale (11.000+ veicoli) */}
             {originType === 'catalog' && (
               <div className="space-y-3">
                 {selectedCatalogVehicle ? (
-                  // Scheda veicolo selezionato con pulsante cambio
-                  <div className="p-3 bg-slate-900 border border-emerald-500/40 rounded-lg flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <div className="p-3 bg-white border border-[#C6DFDA] rounded-xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-[#EAF3F1] border border-[#C6DFDA] flex items-center justify-center text-[#074E44] shrink-0">
                         <CheckCircle2 className="w-5 h-5" />
                       </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-100 flex items-center space-x-2">
-                          <span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[#1A2322] flex items-center gap-2">
+                          <span className="truncate">
                             {selectedCatalogVehicle.make} {selectedCatalogVehicle.model}
                           </span>
                           {selectedCatalogVehicle.generation && (
-                            <span className="text-[10px] px-1.5 py-0.2 bg-slate-800 rounded text-slate-300">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-[#EAF3F1] rounded text-[#074E44] font-semibold shrink-0">
                               {selectedCatalogVehicle.generation}
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
+                        <div className="text-[11px] text-[#5C6B68] mt-0.5 truncate">
                           {selectedCatalogVehicle.version || 'Standard'} •{' '}
                           {selectedCatalogVehicle.engine || '—'} •{' '}
                           {selectedCatalogVehicle.fuel_type || '—'} • Anni:{' '}
@@ -592,29 +543,28 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="xs"
                       onClick={() => setSelectedCatalogVehicle(null)}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors cursor-pointer"
                     >
                       Cambia Veicolo
-                    </button>
+                    </Button>
                   </div>
                 ) : (
-                  // Ricerca rapida o guidata nel catalogo
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-300">
-                        Cerca veicolo nella banca dati centrale (11.346 modelli)
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[#2E3C3A]">
+                        Cerca veicolo nel catalogo generale (11.346 modelli)
                       </span>
-                      <div className="flex items-center space-x-2 text-xs">
+                      <div className="inline-flex rounded-lg p-0.5 bg-[#EDF2F1] border border-[#D7E0DE] text-[11px]">
                         <button
                           type="button"
                           onClick={() => setCatalogSearchMode('quick')}
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
                             catalogSearchMode === 'quick'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              : 'text-slate-400 hover:text-slate-200'
+                              ? 'bg-white text-[#074E44] shadow-xs'
+                              : 'text-[#5C6B68] hover:text-[#1A2322]'
                           }`}
                         >
                           Ricerca Rapida
@@ -622,10 +572,10 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setCatalogSearchMode('cascade')}
-                          className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
                             catalogSearchMode === 'cascade'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              : 'text-slate-400 hover:text-slate-200'
+                              ? 'bg-white text-[#074E44] shadow-xs'
+                              : 'text-[#5C6B68] hover:text-[#1A2322]'
                           }`}
                         >
                           Marca → Modello
@@ -636,49 +586,47 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                     {catalogSearchMode === 'quick' ? (
                       <div className="space-y-2">
                         <div className="relative">
-                          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                          <Search className="w-4 h-4 text-[#8A9895] absolute left-3 top-2.5" />
                           <input
                             type="text"
-                            placeholder="Digita marca, modello, cilindrata: es. 'Golf 7 2.0 TDI', 'Fiat Panda 1.2', 'Clio IV'..."
+                            placeholder="Digita marca, modello o cilindrata (es. Golf 7 2.0 TDI, Fiat Panda 1.2)..."
                             value={catalogSearchTerm}
                             onChange={(e) => handleCatalogSearchChange(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            className={`${uiClasses.input} pl-9 pr-8`}
                           />
                           {isSearchingCatalog && (
-                            <Loader2 className="w-4 h-4 text-amber-400 animate-spin absolute right-3 top-2.5" />
+                            <Loader2 className="w-4 h-4 text-[#074E44] animate-spin absolute right-3 top-2.5" />
                           )}
                         </div>
 
                         {catalogSearchError && (
-                          <div className="p-2.5 bg-red-950/40 border border-red-800/50 rounded text-red-300 text-xs">
-                            {catalogSearchError}
-                          </div>
+                          <AlertBanner tone="danger">{catalogSearchError}</AlertBanner>
                         )}
 
                         {catalogSearchResults.length > 0 && (
-                          <div className="max-h-48 overflow-y-auto space-y-1 bg-slate-900/90 border border-slate-800 rounded-lg p-1.5 divide-y divide-slate-800/40">
+                          <div className="max-h-48 overflow-y-auto bg-white border border-[#E2E8E7] rounded-xl divide-y divide-[#EEF2F1]">
                             {catalogSearchResults.map((cv) => (
                               <button
                                 key={cv.id}
                                 type="button"
                                 onClick={() => handleSelectCatalogVehicle(cv)}
-                                className="w-full text-left p-2 rounded hover:bg-amber-500/10 hover:border-amber-500/30 transition-colors flex items-center justify-between group cursor-pointer"
+                                className="w-full text-left px-3 py-2.5 hover:bg-[#EAF3F1]/60 transition-colors flex items-center justify-between group cursor-pointer"
                               >
                                 <div>
-                                  <div className="text-xs font-bold text-slate-200 group-hover:text-amber-300">
+                                  <div className="text-xs font-bold text-[#1A2322] group-hover:text-[#074E44]">
                                     {cv.make} {cv.model}{' '}
-                                    <span className="font-normal text-slate-400">
+                                    <span className="font-normal text-[#5C6B68]">
                                       {cv.generation ? `(${cv.generation})` : ''}
                                     </span>
                                   </div>
-                                  <div className="text-[10px] text-slate-400">
+                                  <div className="text-[11px] text-[#5C6B68]">
                                     {cv.version || 'Base'} • {cv.engine || '—'} • {cv.fuel_type || '—'} •{' '}
                                     {cv.year_from || '—'}–{cv.year_to || 'oggi'}
                                   </div>
                                 </div>
-                                <span className="text-[10px] font-semibold text-amber-400 group-hover:translate-x-0.5 transition-transform flex items-center space-x-0.5">
+                                <span className="text-[11px] font-semibold text-[#074E44] flex items-center gap-0.5">
                                   <span>Seleziona</span>
-                                  <ChevronRight className="w-3 h-3" />
+                                  <ChevronRight className="w-3.5 h-3.5" />
                                 </span>
                               </button>
                             ))}
@@ -686,14 +634,15 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                         )}
                       </div>
                     ) : (
-                      // Selezione Guidata Marca -> Modello -> Variante
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                         <div>
-                          <label className="text-[11px] text-slate-400 block mb-1">1. Marca</label>
+                          <label className="text-[11px] font-semibold text-[#5C6B68] block mb-1">
+                            1. Marca
+                          </label>
                           <select
                             value={selectedMake}
                             onChange={(e) => handleMakeSelect(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+                            className={uiClasses.select}
                           >
                             <option value="">Seleziona Marca...</option>
                             {catalogMakes.map((m) => (
@@ -705,15 +654,17 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                         </div>
 
                         <div>
-                          <label className="text-[11px] text-slate-400 block mb-1">2. Modello</label>
+                          <label className="text-[11px] font-semibold text-[#5C6B68] block mb-1">
+                            2. Modello
+                          </label>
                           <select
                             value={selectedModel}
                             disabled={!selectedMake || isLoadingCascade}
                             onChange={(e) => handleModelSelect(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-40"
+                            className={uiClasses.select}
                           >
                             <option value="">
-                              {isLoadingCascade ? 'Caricamento modelli...' : 'Seleziona Modello...'}
+                              {isLoadingCascade ? 'Caricamento...' : 'Seleziona Modello...'}
                             </option>
                             {catalogModels.map((m) => (
                               <option key={m} value={m}>
@@ -724,14 +675,16 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                         </div>
 
                         <div>
-                          <label className="text-[11px] text-slate-400 block mb-1">3. Variante</label>
+                          <label className="text-[11px] font-semibold text-[#5C6B68] block mb-1">
+                            3. Variante
+                          </label>
                           <select
                             disabled={!selectedModel || isLoadingCascade || catalogVariants.length === 0}
                             onChange={(e) => {
                               const found = catalogVariants.find((v) => v.id === e.target.value);
                               if (found) handleSelectCatalogVehicle(found);
                             }}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-40"
+                            className={uiClasses.select}
                           >
                             <option value="">
                               {catalogVariants.length > 0
@@ -754,18 +707,16 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
             )}
           </div>
 
-          {/* ========================================================= */}
           {/* SEZIONE 2: ANAGRAFICA RICAMBIO */}
-          {/* ========================================================= */}
           <div className="space-y-3">
-            <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
+            <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5 pb-1.5 border-b border-[#EEF2F1]">
               <FileText className="w-3.5 h-3.5" />
               <span>2. Dati del Ricambio & Identificativi</span>
             </div>
 
             <div>
-              <label className="text-xs text-slate-300 font-semibold block mb-1">
-                Nome del Ricambio <span className="text-red-400">*</span>
+              <label className={uiClasses.label}>
+                Nome del Ricambio <span className="text-red-600">*</span>
               </label>
               <input
                 type="text"
@@ -777,21 +728,19 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                     if (detected) setSide(detected);
                   }
                 }}
-                placeholder="es. Portiera anteriore destra, Faro anteriore sinistro, Alternatore, Turbina..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                placeholder="es. Portiera anteriore destra, Faro anteriore sinistro, Alternatore..."
+                className={`${uiClasses.input} text-sm`}
                 required
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Categoria Tipologia
-                </label>
+                <label className={uiClasses.label}>Categoria</label>
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className={uiClasses.select}
                 >
                   <option value="">Seleziona categoria...</option>
                   {categories.map((cat) => (
@@ -803,8 +752,8 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1 flex items-center space-x-1">
-                  <Hash className="w-3.5 h-3.5 text-slate-400" />
+                <label className={`${uiClasses.label} flex items-center gap-1`}>
+                  <Hash className="w-3.5 h-3.5 text-[#5C6B68]" />
                   <span>Codice OEM Casa Madre</span>
                 </label>
                 <input
@@ -812,13 +761,13 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                   value={oemCode}
                   onChange={(e) => setOemCode(e.target.value)}
                   placeholder="es. 51786521, 03L130277B"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} font-mono`}
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1 flex items-center space-x-1">
-                  <Hash className="w-3.5 h-3.5 text-slate-400" />
+                <label className={`${uiClasses.label} flex items-center gap-1`}>
+                  <Hash className="w-3.5 h-3.5 text-[#5C6B68]" />
                   <span>Codice Interno / Matricola</span>
                 </label>
                 <input
@@ -826,30 +775,26 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                   value={internalCode}
                   onChange={(e) => setInternalCode(e.target.value)}
                   placeholder="es. RIC-2026-0045"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} font-mono`}
                 />
               </div>
             </div>
           </div>
 
-          {/* ========================================================= */}
-          {/* SEZIONE 3: CONDIZIONI, POSIZIONE & SCAFFALE */}
-          {/* ========================================================= */}
+          {/* SEZIONE 3: CONDIZIONI & POSIZIONE */}
           <div className="space-y-3">
-            <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
+            <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5 pb-1.5 border-b border-[#EEF2F1]">
               <Layers className="w-3.5 h-3.5" />
               <span>3. Condizioni & Posizionamento</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Condizione Pezzo
-                </label>
+                <label className={uiClasses.label}>Condizione Pezzo</label>
                 <select
                   value={condition}
                   onChange={(e) => setCondition(e.target.value as InventoryItem['condition'])}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className={uiClasses.select}
                 >
                   <option value="ottimo">Ottimo (Pari al nuovo / testato)</option>
                   <option value="buono">Buono (Normale usura funzionante)</option>
@@ -859,13 +804,11 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Lato / Posizionamento
-                </label>
+                <label className={uiClasses.label}>Lato / Posizionamento</label>
                 <select
                   value={side}
                   onChange={(e) => setSide(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className={uiClasses.select}
                 >
                   <option value="">Non specificato / Centrale</option>
                   <option value="anteriore_sx">Anteriore Sinistro (SX)</option>
@@ -880,8 +823,8 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1 flex items-center space-x-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                <label className={`${uiClasses.label} flex items-center gap-1`}>
+                  <MapPin className="w-3.5 h-3.5 text-[#5C6B68]" />
                   <span>Ubicazione / Scaffale</span>
                 </label>
                 <input
@@ -889,55 +832,49 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                   value={positionNote}
                   onChange={(e) => setPositionNote(e.target.value)}
                   placeholder="es. Corsia 3 - Scaffale B-12"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  className={uiClasses.input}
                 />
               </div>
             </div>
           </div>
 
-          {/* ========================================================= */}
-          {/* SEZIONE 4: PREZZO, GIACENZA & SPEDIZIONI */}
-          {/* ========================================================= */}
+          {/* SEZIONE 4: PREZZO & SPEDIZIONI */}
           <div className="space-y-3">
-            <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5 pb-1 border-b border-slate-800">
+            <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5 pb-1.5 border-b border-[#EEF2F1]">
               <DollarSign className="w-3.5 h-3.5" />
               <span>4. Prezzo Vendita & Spedizione</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Prezzo Vendita (€ IVA incl.)
-                </label>
+                <label className={uiClasses.label}>Prezzo Vendita (€ IVA incl.)</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="es. 85.00 (oppure 0 per bozza)"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-amber-400 font-bold focus:outline-none focus:border-amber-500"
+                  placeholder="es. 85.00 (0 per bozza)"
+                  className={`${uiClasses.input} text-sm font-bold text-[#074E44] tabular-nums`}
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Giacenza Disponibile (Pz) <span className="text-red-400">*</span>
+                <label className={uiClasses.label}>
+                  Giacenza Disponibile (Pz) <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
                   min="1"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 font-bold focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} text-sm font-bold tabular-nums`}
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs text-slate-300 font-semibold block mb-1">
-                  Costo Spedizione Corriere (€)
-                </label>
+                <label className={uiClasses.label}>Costo Spedizione Corriere (€)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -946,141 +883,120 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
                   value={shippingCost}
                   onChange={(e) => setShippingCost(e.target.value)}
                   placeholder="es. 12.00"
-                  className="w-full bg-slate-950 border border-slate-800 disabled:opacity-40 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.input} tabular-nums`}
                 />
               </div>
             </div>
 
-            <div className="flex items-center space-x-6 pt-1 text-xs">
-              <label className="flex items-center space-x-2 cursor-pointer text-slate-300">
+            <div className="flex flex-wrap items-center gap-6 pt-1 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer text-[#2E3C3A]">
                 <input
                   type="checkbox"
                   checked={pickupAvailable}
                   onChange={(e) => setPickupAvailable(e.target.checked)}
-                  className="rounded border-slate-700 text-amber-500 focus:ring-0 bg-slate-950 cursor-pointer"
+                  className="rounded border-[#C6DFDA] text-[#074E44] focus:ring-[#074E44] cursor-pointer"
                 />
-                <span>Ritiro a mano in autodemolizione consentito</span>
+                <span>Ritiro a mano in sede consentito</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-[#2E3C3A]">
                 <input
                   type="checkbox"
                   checked={shippingAvailable}
                   onChange={(e) => setShippingAvailable(e.target.checked)}
-                  className="rounded border-slate-700 text-amber-500 focus:ring-0 bg-slate-950 cursor-pointer"
+                  className="rounded border-[#C6DFDA] text-[#074E44] focus:ring-[#074E44] cursor-pointer"
                 />
                 <span>Spedizione nazionale espressa disponibile</span>
               </label>
             </div>
           </div>
 
-          {/* ========================================================= */}
-          {/* SEZIONE 5: DESCRIZIONE INTELLIGENTE & NOTE */}
-          {/* ========================================================= */}
+          {/* SEZIONE 5: DESCRIZIONE & NOTE */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-              <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-[#EEF2F1]">
+              <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5" />
                 <span>5. Descrizione Annuncio Autopia</span>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="xs"
                 onClick={handleGenerateSmartDescription}
-                className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded text-[11px] font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
-                title="Compila la descrizione formattata basata sui dati tecnici del veicolo selezionato"
+                title="Compila la descrizione basata sui dati del veicolo selezionato"
               >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>Genera Descrizione Intelligente</span>
-              </button>
+                <Sparkles className="w-3 h-3 text-[#074E44]" />
+                <span>Genera Descrizione</span>
+              </Button>
             </div>
 
-            <div>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="es. Portiera anteriore destra per Volkswagen Golf 7, motorizzazione 2.0 TDI, anno 2016. Ricambio originale usato proveniente da veicolo demolito..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+            <textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="es. Portiera anteriore destra per Volkswagen Golf 7, motorizzazione 2.0 TDI..."
+              className={uiClasses.textarea}
+            />
 
             <div>
-              <label className="text-[11px] text-slate-400 font-semibold block mb-1">
-                Note Interne Riservate all'Autodemolitore (non visibili al cliente finale)
+              <label className="text-[11px] text-[#5C6B68] font-semibold block mb-1">
+                Note Interne Officina (non visibili al cliente finale)
               </label>
               <textarea
-                rows={1}
+                rows={2}
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
-                placeholder="Costo di smontaggio, fornitore, condizioni di prova o dettagli operativi..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-400 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                placeholder="Costo di smontaggio, fornitore, condizioni di prova..."
+                className={uiClasses.textarea}
               />
             </div>
           </div>
         </div>
 
-        {/* Footer con Pulsanti Chiari (Bozza Offline vs Pubblica Subito) */}
-        <div className="px-6 py-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-slate-400">
+        {/* Footer */}
+        <div className="px-6 py-4 bg-[#FAFBFB] border-t border-[#EEF2F1] flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="text-[11px] text-[#5C6B68]">
             {originType === 'catalog' && selectedCatalogVehicle && (
               <span>
-                Compatibilità: <strong className="text-slate-200">{selectedCatalogVehicle.make} {selectedCatalogVehicle.model}</strong>
+                Compatibilità:{' '}
+                <strong className="text-[#1A2322]">
+                  {selectedCatalogVehicle.make} {selectedCatalogVehicle.model}
+                </strong>
               </span>
             )}
             {originType === 'yard' && selectedSellerVehicleId && (
               <span>
-                Origine: <strong className="text-slate-200">Veicolo Piazzale</strong>
+                Origine: <strong className="text-[#1A2322]">Veicolo Piazzale</strong>
               </span>
             )}
           </div>
 
-          <div className="flex items-center space-x-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-            >
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={onClose} disabled={isSubmitting}>
               Annulla
-            </button>
+            </Button>
 
-            {/* Salva come Bozza Offline */}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => executeSubmit('inactive')}
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-500/40 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
-              title="Salva come bozza offline per revisionare o completare in seguito"
+              loading={isSubmitting}
+              title="Salva come bozza offline per completare in seguito"
             >
-              {isSubmitting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5 text-amber-400" />
-              )}
+              {!isSubmitting && <Save className="w-3.5 h-3.5 text-[#074E44]" />}
               <span>Salva Bozza Offline</span>
-            </button>
+            </Button>
 
-            {/* Pubblica Subito Online */}
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => executeSubmit('available')}
-              disabled={isSubmitting}
-              className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+              loading={isSubmitting}
               title="Verifica e pubblica subito online su Autopia Shop"
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Pubblicazione...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Pubblica Online</span>
-                </>
-              )}
-            </button>
+              {!isSubmitting && <Check className="w-3.5 h-3.5" />}
+              <span>{isSubmitting ? 'Pubblicazione...' : 'Pubblica Online'}</span>
+            </Button>
           </div>
         </div>
       </div>

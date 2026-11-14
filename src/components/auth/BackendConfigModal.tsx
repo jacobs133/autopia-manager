@@ -2,14 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   Database,
   KeyRound,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
   Save,
   RefreshCw,
   X,
   ExternalLink,
-  ShieldCheck,
   HelpCircle,
   Trash2,
 } from 'lucide-react';
@@ -21,6 +17,7 @@ import {
   validateSupabaseCredentials,
 } from '../../services/supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
+import { AlertBanner, Button, uiClasses } from '../ui/DesignSystem';
 
 interface BackendConfigModalProps {
   isOpen: boolean;
@@ -135,19 +132,19 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm font-sans animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#10201E]/45 backdrop-blur-[2px] font-sans">
+      <div className="w-full max-w-lg bg-white border border-[#E2E8E7] rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Intestazione */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Database className="w-5 h-5" />
+        <div className="px-5 py-4 border-b border-[#E2E8E7] flex items-center justify-between bg-[#FAFBFB]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center">
+              <Database className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wide">
+              <h2 className="text-sm font-bold text-[#1A2322]">
                 Configurazione Connessione Backend
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-xs text-[#5C6B68]">
                 Imposta i parametri del progetto Supabase di Autopia
               </p>
             </div>
@@ -156,7 +153,7 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] rounded-lg transition-colors cursor-pointer"
             title="Chiudi"
           >
             <X className="w-4 h-4" />
@@ -165,24 +162,18 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
 
         {/* Corpo modale */}
         <div className="p-5 space-y-4 overflow-y-auto">
-          {/* Box Sicurezza Chiave Pubblica */}
-          <div className="p-3 bg-amber-950/25 border border-amber-800/40 rounded-lg text-xs text-amber-300 space-y-1">
-            <div className="flex items-center space-x-1.5 font-semibold">
-              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Connessione Diretta Supabase Auth & RLS</span>
-            </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              Autopia Manager necessita solo dell'<strong>URL del progetto</strong> e della <strong>chiave pubblica anon</strong> (non inserire mai la chiave segreta <em>service_role</em>).
-            </p>
-          </div>
+          <AlertBanner tone="info" title="Chiave pubblica di progetto">
+            Inserisci soltanto l'<strong>URL del progetto</strong> e la <strong>chiave pubblica anon</strong> (non utilizzare mai chiavi private <em>service_role</em>).
+          </AlertBanner>
 
-          {/* Form */}
           <form id="backend-config-form" onSubmit={handleSave} className="space-y-3.5 text-xs">
-            <div className="space-y-1">
-              <label className="text-slate-300 font-semibold block flex items-center justify-between">
-                <span>URL Progetto Supabase</span>
-                <span className="text-[10px] text-slate-500 font-mono">https://*.supabase.co</span>
-              </label>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-[#2E3C3A]">
+                  URL Progetto Supabase
+                </label>
+                <span className="text-[11px] text-[#748481] font-mono">https://*.supabase.co</span>
+              </div>
               <input
                 type="text"
                 value={url}
@@ -190,18 +181,18 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
                 placeholder="https://xyzabcdefghijklmnopq.supabase.co"
                 required
                 disabled={isFromEnv || isSaving}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono text-xs disabled:opacity-60"
+                className={`${uiClasses.input} font-mono`}
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-slate-300 font-semibold block flex items-center justify-between">
-                <span className="flex items-center space-x-1">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-[#2E3C3A] flex items-center gap-1">
+                  <KeyRound className="w-3.5 h-3.5 text-[#074E44]" />
                   <span>Chiave Pubblica Anon (anon / public)</span>
-                </span>
-                <span className="text-[10px] text-slate-500">JWT Token Pubblico</span>
-              </label>
+                </label>
+                <span className="text-[11px] text-[#748481]">Token pubblico</span>
+              </div>
               <textarea
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
@@ -209,131 +200,106 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
                 rows={3}
                 required
                 disabled={isFromEnv || isSaving}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono text-xs break-all disabled:opacity-60 resize-none"
+                className={`${uiClasses.textarea} font-mono break-all resize-none`}
               />
             </div>
 
-            {/* Guida integrata espandibile */}
-            <div className="border border-slate-800 rounded-lg bg-slate-950/40 p-2.5">
+            {/* Guida rapida */}
+            <div className="border border-[#E2E8E7] rounded-xl bg-[#F7FAF9] p-3">
               <button
                 type="button"
                 onClick={() => setShowHelp(!showHelp)}
-                className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between text-xs text-[#2E3C3A] hover:text-[#074E44] transition-colors cursor-pointer font-medium"
               >
-                <span className="flex items-center space-x-1.5 font-medium">
-                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Dove trovo questi parametri nella dashboard Supabase?</span>
+                <span className="flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-[#074E44]" />
+                  <span>Dove trovare questi parametri in Supabase</span>
                 </span>
-                <span className="text-xs font-mono">{showHelp ? '▲' : '▼'}</span>
+                <span className="text-[11px] font-mono text-[#5C6B68]">{showHelp ? 'Nascondi' : 'Mostra'}</span>
               </button>
 
               {showHelp && (
-                <div className="mt-2.5 pt-2.5 border-t border-slate-800 text-[11px] text-slate-300 space-y-2">
-                  <ol className="list-decimal list-inside space-y-1 text-slate-400">
-                    <li>Accedi alla console di <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-amber-400 hover:underline inline-flex items-center space-x-0.5"><span>Supabase</span><ExternalLink className="w-2.5 h-2.5" /></a> e seleziona il progetto di Autopia.</li>
-                    <li>Clicca sull'icona delle <strong>Project Settings</strong> (in basso a sinistra).</li>
-                    <li>Vai alla sezione <strong>API</strong>.</li>
-                    <li>Copia il valore sotto <strong>Project URL</strong> e incollalo nel primo campo.</li>
-                    <li>Sotto <strong>Project API Keys</strong>, copia la chiave etichettata come <code className="text-amber-300 font-mono bg-slate-900 px-1 py-0.5 rounded">anon / public</code> e incollala nel secondo campo.</li>
-                  </ol>
-                </div>
+                <ol className="mt-2.5 pt-2.5 border-t border-[#E2E8E7] list-decimal list-inside space-y-1 text-[11px] text-[#5C6B68] leading-relaxed">
+                  <li>
+                    Accedi a{' '}
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[#074E44] font-medium hover:underline inline-flex items-center gap-0.5"
+                    >
+                      <span>Supabase</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>{' '}
+                    e seleziona il progetto Autopia.
+                  </li>
+                  <li>Apri <strong>Project Settings</strong> e seleziona <strong>API</strong>.</li>
+                  <li>Copia il valore <strong>Project URL</strong> nel primo campo.</li>
+                  <li>Copia la chiave pubblica <strong>anon / public</strong> nel secondo campo.</li>
+                </ol>
               )}
             </div>
 
-            {/* Risultato Test Connessione */}
             {testResult && (
-              <div
-                className={`p-3 rounded-lg text-xs flex items-start space-x-2 ${
-                  testResult.success
-                    ? 'bg-emerald-950/40 border border-emerald-800/60 text-emerald-200'
-                    : 'bg-red-950/40 border border-red-800/60 text-red-200'
-                }`}
+              <AlertBanner
+                tone={testResult.success ? 'success' : 'danger'}
+                title={testResult.success ? 'Connessione verificata' : 'Test non riuscito'}
               >
-                {testResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                )}
-                <div>
-                  <div className="font-semibold">
-                    {testResult.success ? 'Connessione verificata con successo' : 'Test di connessione non riuscito'}
-                  </div>
-                  <div className="text-[11px] mt-0.5 opacity-90">{testResult.message}</div>
-                </div>
-              </div>
+                {testResult.message}
+              </AlertBanner>
             )}
 
-            {/* Errore di salvataggio */}
             {saveError && (
-              <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-lg text-xs text-red-200 flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{saveError}</span>
-              </div>
+              <AlertBanner tone="danger">{saveError}</AlertBanner>
             )}
           </form>
         </div>
 
         {/* Footer azioni */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <button
+        <div className="px-5 py-3.5 border-t border-[#E2E8E7] bg-[#FAFBFB] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              loading={isTesting}
               onClick={handleTest}
               disabled={isTesting || !url || !anonKey}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isTesting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Test in corso...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Testa Connessione</span>
-                </>
-              )}
-            </button>
+              {!isTesting && <RefreshCw className="w-3.5 h-3.5" />}
+              <span>{isTesting ? 'Test in corso...' : 'Testa connessione'}</span>
+            </Button>
 
             {url && !isFromEnv && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={handleReset}
                 title="Cancella parametri locali"
-                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700 px-2"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             )}
           </div>
 
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-            >
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
               Annulla
-            </button>
+            </Button>
 
-            <button
+            <Button
               type="submit"
               form="backend-config-form"
+              variant="primary"
+              size="sm"
+              loading={isSaving}
               disabled={isSaving || !url || !anonKey}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/10"
             >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Salvataggio...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Salva e Connetti</span>
-                </>
-              )}
-            </button>
+              {!isSaving && <Save className="w-3.5 h-3.5" />}
+              <span>{isSaving ? 'Salvataggio...' : 'Salva e connetti'}</span>
+            </Button>
           </div>
         </div>
       </div>

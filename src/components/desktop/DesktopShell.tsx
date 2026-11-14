@@ -6,20 +6,22 @@ import {
   Store,
   FileSpreadsheet,
   Settings,
-  ShieldAlert,
+  ShieldCheck,
   LogOut,
   User,
   Building2,
   ExternalLink,
   Globe,
-  Sparkles,
+  RefreshCw,
   ShoppingBag,
 } from 'lucide-react';
 import { TitleBar } from './TitleBar';
 import { StatusBar } from './StatusBar';
 import { UpdateNotificationModal } from '../updater/UpdateNotificationModal';
+import { AutopiaLogo, uiClasses } from '../ui/DesignSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUpdate } from '../../contexts/UpdateContext';
+import { openExternalUrl } from '../../services/externalLinkService';
 
 export type DesktopSection = 'dashboard' | 'vehicles' | 'parts' | 'orders' | 'listings' | 'import' | 'ebay' | 'settings' | 'admin';
 
@@ -45,28 +47,28 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     availableSellers,
     logout,
   } = useAuth();
-  const { currentVersion, updateAvailable, isChecking, checkForUpdates, openUpdateModal } = useUpdate();
+  const { currentVersion, updateAvailable, isChecking, checkForUpdates } = useUpdate();
 
   const getSectionTitle = (sec: DesktopSection) => {
     switch (sec) {
       case 'dashboard':
-        return 'Cruscotto Gestionale';
+        return 'Dashboard';
       case 'vehicles':
-        return 'Parco Veicoli Demoliti';
+        return 'Veicoli Demoliti';
       case 'parts':
-        return 'Magazzino & Ricambi';
+        return 'Magazzino Ricambi';
       case 'orders':
-        return 'Ordini & Richieste di Vendita';
+        return 'Ordini e Vendite';
       case 'listings':
-        return 'Annunci Marketplace Autopia';
+        return 'Annunci Autopia Shop';
       case 'import':
-        return 'Importazione CSV Ricambi';
+        return 'Importazione CSV';
       case 'ebay':
-        return 'Integrazione Canale eBay (Sandbox)';
+        return 'Canale eBay';
       case 'settings':
-        return 'Connessione Backend & Autenticazione';
+        return 'Impostazioni Backend';
       case 'admin':
-        return 'Amministrazione Piattaforma Autopia';
+        return 'Amministrazione';
       default:
         return 'Autopia Manager';
     }
@@ -78,14 +80,14 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     id: DesktopSection;
     label: string;
     icon: React.ReactNode;
-    badge?: string;
+    tag?: string;
     disabled?: boolean;
   }
 
   const baseNavItems: NavItem[] = [
     {
       id: 'dashboard',
-      label: 'Cruscotto (Dashboard)',
+      label: 'Dashboard',
       icon: <LayoutDashboard className="w-4 h-4" />,
       disabled: !isApproved,
     },
@@ -97,54 +99,51 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     },
     {
       id: 'parts',
-      label: 'Magazzino & Ricambi',
+      label: 'Magazzino Ricambi',
       icon: <Package className="w-4 h-4" />,
       disabled: !isApproved,
     },
     {
       id: 'orders',
-      label: 'Ordini & Vendite',
-      icon: <ShoppingBag className="w-4 h-4 text-emerald-400" />,
+      label: 'Ordini e Vendite',
+      icon: <ShoppingBag className="w-4 h-4" />,
       disabled: !isApproved,
     },
     {
       id: 'listings',
-      label: 'Annunci Autopia Shop',
+      label: 'Annunci Shop',
       icon: <Store className="w-4 h-4" />,
       disabled: !isApproved,
     },
     {
       id: 'import',
-      label: 'Importazione CSV',
+      label: 'Importa CSV',
       icon: <FileSpreadsheet className="w-4 h-4" />,
       disabled: !isApproved,
     },
     {
       id: 'ebay',
       label: 'Canale eBay',
-      icon: <Globe className="w-4 h-4 text-amber-400" />,
-      badge: 'Sandbox',
+      icon: <Globe className="w-4 h-4" />,
+      tag: 'Sandbox',
       disabled: !isApproved,
     },
   ];
 
-  // Le sezioni Amministrazione Piattaforma e Connessione Backend sono visibili ed accessibili
-  // ESCLUSIVAMENTE all'account amministratore con email lollogamer2009@gmail.com
+  // Le sezioni Amministrazione e Connessione Backend sono riservate esclusivamente all'amministratore
   const navItems: NavItem[] = isAdmin
     ? [
         ...baseNavItems,
         {
           id: 'admin' as DesktopSection,
-          label: 'Amministrazione Autopia',
-          icon: <ShieldAlert className="w-4 h-4 text-purple-400" />,
-          badge: 'SuperAdmin',
+          label: 'Amministrazione',
+          icon: <ShieldCheck className="w-4 h-4" />,
           disabled: false,
         },
         {
           id: 'settings' as DesktopSection,
-          label: 'Connessione Backend & Sicurezza',
-          icon: <Settings className="w-4 h-4 text-amber-400" />,
-          badge: 'Master',
+          label: 'Connessione Backend',
+          icon: <Settings className="w-4 h-4" />,
           disabled: false,
         },
       ]
@@ -153,116 +152,124 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   const getStatusText = () => {
     switch (status) {
       case 'INITIALIZING':
-        return 'Verifica configurazione e sessione in corso...';
+        return 'Avvio in corso...';
       case 'UNCONFIGURED':
-        return 'Backend Supabase non configurato';
+        return 'Configurazione backend richiesta';
       case 'UNAUTHENTICATED':
-        return 'In attesa di login autodemolitore';
+        return 'Accesso richiesto';
       case 'AUTHENTICATED_APPROVED':
-        return `Connesso: ${effectiveSellerProfile?.business_name || sellerProfile?.business_name || 'Autodemolitore'}`;
+        return 'Account operativo';
       case 'AUTHENTICATED_PENDING':
-        return 'Account in attesa di approvazione da Autopia';
+        return 'Account in attesa di approvazione';
       case 'AUTHENTICATED_SUSPENDED':
-        return 'Account venditore sospeso';
+        return 'Account sospeso';
       case 'AUTHENTICATED_REJECTED':
-        return 'Account venditore non approvato';
+        return 'Account non approvato';
       case 'AUTHENTICATED_NO_SELLER':
-        return 'Nessun profilo venditore associato';
+        return 'Nessun profilo associato';
       case 'NETWORK_ERROR':
-        return 'Errore di connessione di rete con Supabase';
+        return 'Errore di rete';
       default:
-        return 'Stato non definito';
+        return 'Stato non disponibile';
     }
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
-      {/* 1. Barra del Titolo Desktop personalizzata per Windows */}
+    <div className="h-screen w-screen flex flex-col bg-[#F5F7F7] text-[#1A2322] font-sans overflow-hidden select-none">
+      {/* Barra superiore finestra */}
       <TitleBar currentSectionTitle={getSectionTitle(activeSection)} />
 
-      {/* 2. Corpo principale con Sidebar laterale e Area di lavoro */}
+      {/* Corpo principale: sidebar laterale + area centrale */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Barra di Navigazione Laterale */}
-        <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
-          <div className="p-3">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 py-1 mb-1">
-              Menu Gestionale
+        <aside className="w-60 bg-white border-r border-[#E2E8E7] flex flex-col justify-between shrink-0">
+          {/* Logo e Menu di navigazione */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 py-4 border-b border-[#EEF2F1]">
+              <AutopiaLogo size="md" subtitle="MANAGER" />
             </div>
-            <nav className="space-y-1">
-              {navItems.map((item) => {
-                const isActive = activeSection === item.id;
-                const isDisabled = item.disabled && activeSection !== item.id;
 
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      if (!isDisabled) onSelectSection(item.id);
-                    }}
-                    disabled={isDisabled}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-all text-left ${
-                      isActive
-                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold'
-                        : isDisabled
-                        ? 'text-slate-600 cursor-not-allowed opacity-60'
-                        : 'text-slate-300 hover:bg-slate-800/80 hover:text-slate-100 cursor-pointer'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <span className={isActive ? 'text-amber-400' : isDisabled ? 'text-slate-600' : 'text-slate-400'}>
-                        {item.icon}
-                      </span>
-                      <span>{item.label}</span>
-                    </div>
+            <div className="p-3">
+              <nav className="space-y-0.5" aria-label="Navigazione principale">
+                {navItems.map((item) => {
+                  const isActive = activeSection === item.id;
+                  const isDisabled = item.disabled && activeSection !== item.id;
 
-                    {item.badge && (
-                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        if (!isDisabled) onSelectSection(item.id);
+                      }}
+                      disabled={isDisabled}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] transition-colors text-left ${
+                        isActive
+                          ? 'bg-[#EAF3F1] text-[#074E44] font-semibold'
+                          : isDisabled
+                          ? 'text-[#A0AEAB] cursor-not-allowed opacity-60 font-medium'
+                          : 'text-[#3F4E4B] hover:bg-[#F3F6F5] hover:text-[#1A2322] font-medium cursor-pointer'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`shrink-0 ${
+                            isActive
+                              ? 'text-[#074E44]'
+                              : isDisabled
+                              ? 'text-[#B2BFBC]'
+                              : 'text-[#6A7A77]'
+                          }`}
+                        >
+                          {item.icon}
+                        </span>
+                        <span className="truncate whitespace-nowrap">{item.label}</span>
+                      </div>
+
+                      {item.tag && (
+                        <span className="text-[10px] font-medium text-[#5C6B68] bg-[#F2F6F5] px-1.5 py-0.5 rounded shrink-0">
+                          {item.tag}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
           </div>
 
-          {/* Area Utente Autenticato e Logout */}
-          <div className="border-t border-slate-800/80 bg-slate-950/60 p-3 space-y-2.5">
+          {/* Area profilo utente e azioni inferiori */}
+          <div className="border-t border-[#E2E8E7] bg-[#FAFBFB] p-3 space-y-2.5">
             {user ? (
               <div className="space-y-2">
-                <div className="bg-slate-900 border border-slate-800 rounded p-2.5 space-y-1.5 text-xs">
-                  {isAdmin && (
-                    <div className="pb-1 border-b border-purple-500/20 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center space-x-1">
-                        <ShieldAlert className="w-3 h-3 text-purple-400" />
-                        <span>Master Admin</span>
-                      </span>
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/50">
-                        Autopia Staff
+                <div className="bg-white border border-[#E2E8E7] rounded-xl p-2.5 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[#074E44] font-semibold min-w-0">
+                      <Building2 className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">
+                        {effectiveSellerProfile?.business_name || 'Autodemolitore'}
                       </span>
                     </div>
-                  )}
-
-                  <div className="flex items-center space-x-1.5 text-amber-400 font-semibold">
-                    <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{effectiveSellerProfile?.business_name || 'Autodemolitore'}</span>
+                    {isAdmin && (
+                      <span className="text-[10px] font-semibold text-[#074E44] bg-[#EAF3F1] px-1.5 py-0.5 rounded shrink-0">
+                        Admin
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-1.5 text-slate-400 text-[11px]">
+
+                  <div className="flex items-center gap-1.5 text-[#5C6B68] text-[11px] min-w-0">
                     <User className="w-3 h-3 shrink-0" />
                     <span className="truncate">{user.email}</span>
                   </div>
 
-                  {/* Switcher Contesto Piazzale per Master Admin */}
                   {isAdmin && availableSellers.length > 0 && (
-                    <div className="pt-1.5 border-t border-slate-800 space-y-1">
-                      <label className="text-[10px] text-slate-400 block font-medium">
-                        Piazzale in Gestione:
+                    <div className="pt-1.5 border-t border-[#EEF2F1] space-y-1">
+                      <label className="text-[10px] text-[#5C6B68] block font-semibold">
+                        Sede in gestione
                       </label>
                       <select
                         value={adminSelectedSellerId || effectiveSellerProfile?.id || ''}
                         onChange={(e) => setAdminSelectedSellerId(e.target.value)}
-                        className="w-full bg-slate-950 border border-purple-500/40 rounded px-1.5 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-purple-400"
+                        className={`${uiClasses.select} py-1 px-2 text-[11px]`}
                       >
                         {availableSellers.map((s) => (
                           <option key={s.id} value={s.id}>
@@ -272,88 +279,60 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                       </select>
                     </div>
                   )}
-
-                  {!isAdmin && sellerProfile && (
-                    <div className="pt-1 flex items-center justify-between text-[10px]">
-                      <span className="text-slate-500">Stato Venditore:</span>
-                      <span
-                        className={`font-semibold uppercase text-[9px] px-1.5 py-0.2 rounded ${
-                          sellerProfile.status === 'approved'
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                            : 'bg-amber-950 text-amber-300 border border-amber-800/60'
-                        }`}
-                      >
-                        {sellerProfile.status}
-                      </span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Controllo Aggiornamenti Software - Accessibile a TUTTI gli utenti */}
-                <button
-                  type="button"
-                  onClick={() => checkForUpdates(true)}
-                  className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-xs flex items-center justify-between transition-colors cursor-pointer"
-                  title="Verifica se sono disponibili nuove versioni"
-                >
-                  <div className="flex items-center space-x-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Aggiornamenti App</span>
-                  </div>
-                  {updateAvailable ? (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 animate-pulse">
-                      Nuova v!
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => checkForUpdates(true)}
+                    disabled={isChecking}
+                    className="py-1.5 px-2 bg-white hover:bg-[#F2F6F5] text-[#3F4E4B] border border-[#D7E0DE] rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+                    title="Verifica aggiornamenti disponibili"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin text-[#074E44]' : ''}`} />
+                    <span className="truncate">
+                      {updateAvailable ? 'Aggiorna' : `v${currentVersion}`}
                     </span>
-                  ) : (
-                    <span className="font-mono text-[10px] text-slate-500 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
-                      v{currentVersion}
-                    </span>
-                  )}
-                </button>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="w-full py-1.5 px-2 bg-slate-900 hover:bg-red-950/40 hover:text-red-300 text-slate-400 border border-slate-800 hover:border-red-800/50 rounded text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Disconnetti Account</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="py-1.5 px-2 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-[#4F5E5B] border border-[#D7E0DE] rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    <span>Esci</span>
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="rounded border border-slate-800 bg-slate-900/60 p-2.5 text-[11px] space-y-1.5">
+              <div className="bg-white border border-[#E2E8E7] rounded-xl p-3 text-[11px] space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-300">Marketplace Collegato</span>
-                  <a
-                    href="https://autopiashop.it"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-amber-400 hover:underline inline-flex items-center space-x-0.5 text-[10px]"
+                  <span className="font-semibold text-[#1A2322]">Portale Shop</span>
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl('https://autopiashop.it')}
+                    className="text-[#074E44] hover:underline inline-flex items-center gap-1 text-[11px] font-medium cursor-pointer"
                   >
                     <span>autopiashop.it</span>
                     <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
+                  </button>
                 </div>
-                <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-                  <ShieldAlert className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span>Accesso riservato agli autodemolitori accreditati.</span>
-                </div>
+                <p className="text-[11px] text-[#5C6B68] leading-snug">
+                  Accesso riservato ai centri di demolizione autorizzati.
+                </p>
 
                 <button
                   type="button"
                   onClick={() => checkForUpdates(true)}
                   disabled={isChecking}
-                  className="w-full mt-2 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 rounded text-[11px] flex items-center justify-between transition-colors cursor-pointer disabled:opacity-60"
-                  title="Verifica aggiornamenti disponibili"
+                  className="w-full py-1.5 px-2.5 bg-[#F5F7F7] hover:bg-[#EAF3F1] text-[#1A2322] border border-[#D7E0DE] rounded-lg text-[11px] font-medium flex items-center justify-between transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <span className="flex items-center space-x-1.5">
-                    <Sparkles className={`w-3 h-3 ${updateAvailable ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`} />
-                    <span>Verifica Aggiornamenti</span>
-                    {updateAvailable && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    )}
+                  <span className="flex items-center gap-1.5">
+                    <RefreshCw className={`w-3 h-3 text-[#074E44] ${isChecking ? 'animate-spin' : ''}`} />
+                    <span>{updateAvailable ? 'Aggiornamento pronto' : 'Verifica aggiornamenti'}</span>
                   </span>
-                  <span className="font-mono text-[9px] text-slate-400 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">
+                  <span className="font-mono tabular-nums text-[10px] text-[#5C6B68]">
                     v{currentVersion}
                   </span>
                 </button>
@@ -363,15 +342,15 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         </aside>
 
         {/* Area di Lavoro Principale */}
-        <main className="flex-1 flex flex-col min-w-0 bg-slate-950 overflow-y-auto">
+        <main className="flex-1 flex flex-col min-w-0 bg-[#F5F7F7] overflow-y-auto">
           {children}
         </main>
       </div>
 
-      {/* Modale Aggiornamenti Software (Tauri v2 Updater) */}
+      {/* Modale Aggiornamenti In-App */}
       <UpdateNotificationModal />
 
-      {/* 3. Barra di Stato Desktop */}
+      {/* Barra di Stato Inferiore */}
       <StatusBar
         backendConnected={isApproved}
         statusMessage={getStatusText()}

@@ -3,39 +3,42 @@ import {
   Package,
   Plus,
   Search,
-  Filter,
   RefreshCw,
-  Hash,
-  DollarSign,
-  Tag,
   MapPin,
   Car,
-  ShoppingBag,
   Eye,
   Edit2,
   Trash2,
   CheckCircle2,
-  AlertCircle,
-  Loader2,
+  Layers,
+  DollarSign,
   ChevronLeft,
   ChevronRight,
-  Layers,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type {
   InventoryItem,
   InventoryFilters,
-  PartCategory,
 } from '../../types/inventory';
 import type { SellerVehicle } from '../../types/vehicles';
 import {
   fetchSellerInventory,
   deleteInventoryItem,
-  fetchPartCategories,
 } from '../../services/partsService';
 import { fetchSellerVehicles } from '../../services/vehiclesService';
 import { PartFormModal } from './PartFormModal';
 import { PartDetailsModal } from './PartDetailsModal';
+import {
+  uiClasses,
+  Button,
+  KpiCard,
+  StatusBadge,
+  AlertBanner,
+  LoadingState,
+  EmptyState,
+  type BadgeTone,
+} from '../ui/DesignSystem';
 
 export const PartsManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
@@ -61,12 +64,11 @@ export const PartsManager: React.FC = () => {
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Metadati per filtri
-  const [categories, setCategories] = useState<PartCategory[]>([]);
   const [yardVehicles, setYardVehicles] = useState<SellerVehicle[]>([]);
 
-  // Carica i dati dell'inventario
   const loadInventory = useCallback(async () => {
     if (!sellerId) return;
     setIsLoading(true);
@@ -95,7 +97,6 @@ export const PartsManager: React.FC = () => {
     setIsLoading(false);
   }, [sellerId, search, statusFilter, conditionFilter, vehicleFilter, page]);
 
-  // Carica metadati (veicoli piazzale e categorie ricambi)
   useEffect(() => {
     const sid = sellerId;
     if (!sid) return;
@@ -103,18 +104,14 @@ export const PartsManager: React.FC = () => {
     async function fetchMeta() {
       if (!sid) return;
       try {
-        const [catsRes, vehsRes] = await Promise.all([
-          fetchPartCategories(),
-          fetchSellerVehicles({
-            sellerId: sid,
-            filters: {},
-            page: 1,
-            pageSize: 200,
-          }),
-        ]);
-        if (isMounted) {
-          if (catsRes.data) setCategories(catsRes.data);
-          if (vehsRes.data) setYardVehicles(vehsRes.data);
+        const vehsRes = await fetchSellerVehicles({
+          sellerId: sid,
+          filters: {},
+          page: 1,
+          pageSize: 200,
+        });
+        if (isMounted && vehsRes.data) {
+          setYardVehicles(vehsRes.data);
         }
       } catch (e) {
         console.warn('Errore lettura metadati inventario:', e);
@@ -130,14 +127,10 @@ export const PartsManager: React.FC = () => {
     loadInventory();
   }, [loadInventory]);
 
-  // Statistiche rapide calcolate
   const totalValue = items.reduce((acc, it) => acc + Number(it.price) * (it.quantity || 0), 0);
   const availableItemsCount = items.filter((it) => it.status === 'available').length;
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  // Eliminazione
   const confirmDelete = async () => {
     if (!sellerId || !itemToDelete) return;
     setIsDeleting(true);
@@ -156,107 +149,107 @@ export const PartsManager: React.FC = () => {
     }
   };
 
-  const conditionBadges: Record<string, { label: string; color: string }> = {
-    ottimo: { label: 'Ottimo', color: 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60' },
-    buono: { label: 'Buono', color: 'text-blue-400 bg-blue-950/60 border-blue-800/60' },
-    discreto: { label: 'Discreto', color: 'text-amber-400 bg-amber-950/60 border-amber-800/60' },
-    da_revisionare: { label: 'Da revisionare', color: 'text-purple-400 bg-purple-950/60 border-purple-800/60' },
+  const conditionMeta: Record<string, { label: string; tone: BadgeTone }> = {
+    ottimo: { label: 'Ottimo', tone: 'success' },
+    buono: { label: 'Buono', tone: 'info' },
+    discreto: { label: 'Discreto', tone: 'warning' },
+    da_revisionare: { label: 'Da revisionare', tone: 'neutral' },
   };
 
-  const statusBadges: Record<string, { label: string; color: string }> = {
-    available: { label: 'Online', color: 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60' },
-    reserved: { label: 'Riservato', color: 'text-amber-400 bg-amber-950/60 border-amber-800/60' },
-    sold: { label: 'Venduto', color: 'text-slate-400 bg-slate-900 border-slate-700' },
-    inactive: { label: 'Offline', color: 'text-rose-400 bg-rose-950/60 border-rose-800/60' },
+  const renderStatusBadge = (item: InventoryItem) => {
+    if (item.status === 'available') {
+      return <StatusBadge tone="success">Pubblicato</StatusBadge>;
+    }
+    if (item.status === 'inactive') {
+      if (!item.price || Number(item.price) <= 0) {
+        return <StatusBadge tone="warning">Bozza incompleta</StatusBadge>;
+      }
+      return <StatusBadge tone="info">Bozza pronta</StatusBadge>;
+    }
+    if (item.status === 'reserved') {
+      return <StatusBadge tone="warning">Riservato</StatusBadge>;
+    }
+    return <StatusBadge tone="neutral">Venduto</StatusBadge>;
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans text-slate-100">
-      {/* 1. Barra Superiore con Statistiche e Pulsante Nuovo */}
-      <div className="p-6 border-b border-slate-800 bg-slate-900/60 space-y-4 shrink-0">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322]">
+      {/* Header & KPI */}
+      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                Fase 2 • Magazzino Digitale
-              </span>
-              <span className="text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
+              <span className="font-semibold text-[#074E44]">
                 {currentSeller?.business_name || 'Autodemolitore'}
               </span>
+              <span>•</span>
+              <span>Magazzino & Ricambi</span>
             </div>
-            <h1 className="text-xl font-bold text-slate-100 mt-1 flex items-center space-x-2">
-              <Package className="w-5 h-5 text-amber-400" />
+            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
+              <Package className="w-5 h-5 text-[#074E44]" />
               <span>Magazzino & Ricambi Smontati</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Gestione pezzi con codici OEM, scaffali fisici, prezzi e sincronizzazione in tempo reale con Autopia Shop.
+            <p className="text-xs text-[#5C6B68] mt-0.5">
+              Gestisci ricambi con codici OEM, posizione a scaffale, prezzi e pubblicazione su Autopia Shop.
             </p>
           </div>
 
-          <div className="flex items-center space-x-2.5">
-            <button
-              type="button"
+          <div className="flex items-center gap-2.5">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => loadInventory()}
               disabled={isLoading}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors"
               title="Ricarica elenco ricambi"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
-            </button>
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
+              <span>Aggiorna</span>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => {
                 setEditingItem(null);
                 setIsFormOpen(true);
               }}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-colors shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" />
               <span>Nuovo Ricambio</span>
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Schede KPI */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <Layers className="w-3 h-3 text-amber-400" />
-              <span>Totale Ricambi a Catalogo</span>
-            </div>
-            <div className="text-xl font-bold text-slate-100 mt-1">{totalCount}</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>Disponibili su Autopia Shop</span>
-            </div>
-            <div className="text-xl font-bold text-emerald-400 mt-1">{availableItemsCount}</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <DollarSign className="w-3 h-3 text-amber-400" />
-              <span>Valore Totale Pagina</span>
-            </div>
-            <div className="text-xl font-bold text-amber-400 mt-1">€ {totalValue.toFixed(2)}</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <Car className="w-3 h-3 text-blue-400" />
-              <span>Veicoli Piazzale Attivi</span>
-            </div>
-            <div className="text-xl font-bold text-blue-400 mt-1">{yardVehicles.length}</div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="Totale ricambi a catalogo"
+            value={totalCount.toLocaleString('it-IT')}
+            icon={<Layers className="w-4 h-4" />}
+          />
+          <KpiCard
+            label="Online su Autopia Shop"
+            value={availableItemsCount.toLocaleString('it-IT')}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+            accent="success"
+          />
+          <KpiCard
+            label="Valore pagina corrente"
+            value={`€ ${totalValue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={<DollarSign className="w-4 h-4" />}
+            accent="brand"
+          />
+          <KpiCard
+            label="Veicoli piazzale attivi"
+            value={yardVehicles.length.toLocaleString('it-IT')}
+            icon={<Car className="w-4 h-4" />}
+          />
         </div>
 
-        {/* Barra Filtri e Ricerca */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5 pt-1">
+        {/* Barra Filtri */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8A9895]" />
             <input
               type="text"
               value={search}
@@ -264,276 +257,245 @@ export const PartsManager: React.FC = () => {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Cerca per titolo, codice OEM, scaffale..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              placeholder="Cerca titolo, codice OEM, scaffale..."
+              className={`${uiClasses.input} pl-8`}
             />
           </div>
 
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as InventoryFilters['status']);
-                setPage(1);
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-            >
-              <option value="all">Tutti gli stati (Bozze & Online)</option>
-              <option value="inactive">Bozze Offline / In lavorazione</option>
-              <option value="available">Pubblicati Online (Disponibili)</option>
-              <option value="reserved">Riservati</option>
-              <option value="sold">Venduti / Esauriti</option>
-            </select>
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as InventoryFilters['status']);
+              setPage(1);
+            }}
+            className={uiClasses.select}
+          >
+            <option value="all">Tutti gli stati (Bozze & Online)</option>
+            <option value="inactive">Bozze Offline / In lavorazione</option>
+            <option value="available">Pubblicati Online (Disponibili)</option>
+            <option value="reserved">Riservati</option>
+            <option value="sold">Venduti / Esauriti</option>
+          </select>
 
-          <div>
-            <select
-              value={conditionFilter}
-              onChange={(e) => {
-                setConditionFilter(e.target.value as InventoryFilters['condition']);
-                setPage(1);
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-            >
-              <option value="all">Tutte le condizioni</option>
-              <option value="ottimo">Ottimo</option>
-              <option value="buono">Buono</option>
-              <option value="discreto">Discreto</option>
-              <option value="da_revisionare">Da revisionare</option>
-            </select>
-          </div>
+          <select
+            value={conditionFilter}
+            onChange={(e) => {
+              setConditionFilter(e.target.value as InventoryFilters['condition']);
+              setPage(1);
+            }}
+            className={uiClasses.select}
+          >
+            <option value="all">Tutte le condizioni</option>
+            <option value="ottimo">Ottimo</option>
+            <option value="buono">Buono</option>
+            <option value="discreto">Discreto</option>
+            <option value="da_revisionare">Da revisionare</option>
+          </select>
 
-          <div>
-            <select
-              value={vehicleFilter}
-              onChange={(e) => {
-                setVehicleFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-            >
-              <option value="all">Tutti i veicoli piazzale</option>
-              {yardVehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plate ? `[${v.plate}] ` : ''}
-                  {v.make} {v.model}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={vehicleFilter}
+            onChange={(e) => {
+              setVehicleFilter(e.target.value);
+              setPage(1);
+            }}
+            className={uiClasses.select}
+          >
+            <option value="all">Tutti i veicoli piazzale</option>
+            {yardVehicles.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.plate ? `[${v.plate}] ` : ''}
+                {v.make} {v.model}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* 2. Tabella Ricambi */}
+      {/* Contenuto Tabella */}
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="h-64 flex flex-col items-center justify-center space-y-3 text-slate-400">
-            <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
-            <p className="text-xs">Caricamento inventario magazzino in corso...</p>
-          </div>
+          <LoadingState message="Caricamento inventario magazzino in corso..." />
         ) : error ? (
-          <div className="p-4 rounded-lg bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-            <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-            <span>{error}</span>
-          </div>
+          <AlertBanner tone="danger" title="Errore caricamento magazzino">
+            {error}
+          </AlertBanner>
         ) : items.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center space-y-3 bg-slate-900/40 rounded-xl border border-slate-800 border-dashed text-slate-400">
-            <Package className="w-10 h-10 text-slate-600" />
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-300">Nessun ricambio trovato</p>
-              <p className="text-xs text-slate-500 mt-1">
-                {search || statusFilter !== 'all' || conditionFilter !== 'all' || vehicleFilter !== 'all'
-                  ? 'Nessun risultato corrisponde ai filtri selezionati.'
-                  : 'Il magazzino è ancora vuoto. Registra il primo ricambio smontato dal piazzale o carica un file CSV.'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingItem(null);
-                setIsFormOpen(true);
-              }}
-              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Aggiungi Ricambio</span>
-            </button>
-          </div>
+          <EmptyState
+            icon={<Package className="w-6 h-6" />}
+            title="Nessun ricambio trovato"
+            description={
+              search || statusFilter !== 'all' || conditionFilter !== 'all' || vehicleFilter !== 'all'
+                ? 'Nessun risultato corrisponde ai filtri selezionati.'
+                : 'Il magazzino è ancora vuoto. Registra il primo ricambio smontato o importa un file CSV.'
+            }
+            action={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setEditingItem(null);
+                  setIsFormOpen(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Aggiungi Ricambio</span>
+              </Button>
+            }
+          />
         ) : (
-          <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/50">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 font-semibold uppercase text-[10px]">
-                  <th className="py-3 px-4">Ricambio</th>
-                  <th className="py-3 px-4">Codice OEM / Interno</th>
-                  <th className="py-3 px-4">Ubicazione</th>
-                  <th className="py-3 px-4">Condizione</th>
-                  <th className="py-3 px-4">Giacenza</th>
-                  <th className="py-3 px-4">Prezzo</th>
-                  <th className="py-3 px-4">Stato</th>
-                  <th className="py-3 px-4 text-right">Azioni</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
-                    onClick={() => setDetailsItem(item)}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-100 group-hover:text-amber-400 transition-colors">
-                        {item.title}
-                      </div>
-                      {item.seller_vehicle_id && (
-                        <div className="text-[10px] text-slate-400 flex items-center space-x-1 mt-0.5">
-                          <Car className="w-3 h-3 text-slate-500" />
-                          <span>Veicolo piazzale collegato</span>
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4 font-mono">
-                      <div className="text-slate-200 font-medium">{item.oem_code || '—'}</div>
-                      {item.internal_code && (
-                        <div className="text-[10px] text-slate-400">Int: {item.internal_code}</div>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4">
-                      {item.position_note ? (
-                        <span className="inline-flex items-center space-x-1 text-amber-300 bg-amber-950/40 border border-amber-800/40 px-2 py-0.5 rounded text-[11px]">
-                          <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
-                          <span className="truncate max-w-[120px]">{item.position_note}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 italic">Non indicato</span>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                          conditionBadges[item.condition]?.color || 'text-slate-300'
-                        }`}
-                      >
-                        {conditionBadges[item.condition]?.label || item.condition}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-200">
-                        {item.quantity} <span className="text-[10px] text-slate-500 font-normal">pz</span>
-                      </div>
-                      {item.sold_quantity ? (
-                        <div className="text-[10px] text-emerald-400">
-                          {item.sold_quantity} venduti
-                        </div>
-                      ) : null}
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-amber-400 text-sm">
-                        € {Number(item.price).toFixed(2)}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      {item.status === 'available' ? (
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-emerald-400 bg-emerald-950/60 border-emerald-800/60">
-                          Pubblicato
-                        </span>
-                      ) : item.status === 'inactive' ? (
-                        !item.price || Number(item.price) <= 0 ? (
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-amber-400 bg-amber-950/60 border-amber-800/60">
-                            Bozza Incompleta
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-sky-400 bg-sky-950/60 border-sky-800/60">
-                            Bozza Pronta
-                          </span>
-                        )
-                      ) : item.status === 'reserved' ? (
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-amber-300 bg-amber-950/60 border-amber-800/60">
-                          Riservato
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border text-slate-400 bg-slate-900 border-slate-700">
-                          Venduto
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-4 text-right">
-                      <div
-                        className="flex items-center justify-end space-x-1.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setDetailsItem(item)}
-                          className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
-                          title="Dettagli & Scarico banco"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingItem(item);
-                            setIsFormOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-colors"
-                          title="Modifica ricambio"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setItemToDelete(item)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"
-                          title="Elimina ricambio"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+          <div className={uiClasses.tableWrapper}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className={uiClasses.tableHeadRow}>
+                    <th className="py-3 px-4">Ricambio</th>
+                    <th className="py-3 px-4">Codice OEM / Interno</th>
+                    <th className="py-3 px-4">Ubicazione</th>
+                    <th className="py-3 px-4">Condizione</th>
+                    <th className="py-3 px-4">Giacenza</th>
+                    <th className="py-3 px-4">Prezzo</th>
+                    <th className="py-3 px-4">Stato</th>
+                    <th className="py-3 px-4 text-right">Azioni</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[#EEF2F1]">
+                  {items.map((item) => {
+                    const cond = conditionMeta[item.condition];
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-[#F7FAF9] transition-colors cursor-pointer group"
+                        onClick={() => setDetailsItem(item)}
+                      >
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-[#1A2322] group-hover:text-[#074E44] transition-colors">
+                            {item.title}
+                          </div>
+                          {item.seller_vehicle_id && (
+                            <div className="text-[11px] text-[#5C6B68] flex items-center gap-1 mt-0.5">
+                              <Car className="w-3 h-3 text-[#074E44]/70" />
+                              <span>Veicolo piazzale collegato</span>
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono">
+                          <div className="text-[#1A2322] font-medium">{item.oem_code || '—'}</div>
+                          {item.internal_code && (
+                            <div className="text-[11px] text-[#5C6B68]">Int: {item.internal_code}</div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {item.position_note ? (
+                            <span className="inline-flex items-center gap-1 text-[#074E44] bg-[#EAF3F1] border border-[#C6DFDA] px-2 py-0.5 rounded-md text-[11px] font-medium">
+                              <MapPin className="w-3 h-3 shrink-0" />
+                              <span className="truncate max-w-[140px]">{item.position_note}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[#8A9895] italic">Non indicato</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <StatusBadge tone={cond?.tone || 'neutral'}>
+                            {cond?.label || item.condition}
+                          </StatusBadge>
+                        </td>
+
+                        <td className="py-3 px-4 tabular-nums">
+                          <div className="font-bold text-[#1A2322]">
+                            {item.quantity} <span className="text-[11px] text-[#5C6B68] font-normal">pz</span>
+                          </div>
+                          {item.sold_quantity ? (
+                            <div className="text-[11px] text-emerald-700 font-medium">
+                              {item.sold_quantity} venduti
+                            </div>
+                          ) : null}
+                        </td>
+
+                        <td className="py-3 px-4 tabular-nums">
+                          <div className="font-bold text-[#074E44] text-sm">
+                            € {Number(item.price).toFixed(2)}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">{renderStatusBadge(item)}</td>
+
+                        <td className="py-3 px-4 text-right">
+                          <div
+                            className="flex items-center justify-end gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setDetailsItem(item)}
+                              className="p-1.5 text-[#5C6B68] hover:text-[#074E44] hover:bg-[#EAF3F1] rounded-lg transition-colors cursor-pointer"
+                              title="Dettagli & Scarico banco"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingItem(item);
+                                setIsFormOpen(true);
+                              }}
+                              className="p-1.5 text-[#5C6B68] hover:text-[#074E44] hover:bg-[#EAF3F1] rounded-lg transition-colors cursor-pointer"
+                              title="Modifica ricambio"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setItemToDelete(item)}
+                              className="p-1.5 text-[#5C6B68] hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title="Elimina ricambio"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
-      {/* 3. Paginazione */}
+      {/* Paginazione */}
       {totalPages > 1 && (
-        <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400 shrink-0">
-          <div>
-            Visualizzazione di {items.length} su <strong>{totalCount}</strong> ricambi
+        <div className="px-6 py-3 border-t border-[#E2E8E7] bg-white flex items-center justify-between text-xs text-[#5C6B68] shrink-0">
+          <div className="tabular-nums">
+            Visualizzazione di <strong className="text-[#1A2322]">{items.length}</strong> su{' '}
+            <strong className="text-[#1A2322]">{totalCount}</strong> ricambi
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="xs"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded bg-slate-900 border border-slate-800 disabled:opacity-40 hover:bg-slate-800 text-slate-200"
             >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-2">
-              Pagina <strong>{page}</strong> di <strong>{totalPages}</strong>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </Button>
+            <span className="px-2 tabular-nums">
+              Pagina <strong className="text-[#1A2322]">{page}</strong> di{' '}
+              <strong className="text-[#1A2322]">{totalPages}</strong>
             </span>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="xs"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded bg-slate-900 border border-slate-800 disabled:opacity-40 hover:bg-slate-800 text-slate-200"
             >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
       )}
@@ -578,52 +540,57 @@ export const PartsManager: React.FC = () => {
 
       {/* Modal Conferma Eliminazione */}
       {itemToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center space-x-3 text-red-400">
-              <Trash2 className="w-6 h-6 shrink-0" />
-              <h3 className="text-base font-bold text-slate-100">Elimina Ricambio</h3>
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8E7] rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-red-700">
+                <div className="w-9 h-9 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-[#162220]">Elimina Ricambio</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setItemToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
+
+            <p className="text-xs text-[#3F4E4B] leading-relaxed">
               Sei sicuro di voler eliminare definitivamente dal magazzino il ricambio{' '}
-              <strong className="text-slate-100 font-bold">"{itemToDelete.title}"</strong> (OEM:{' '}
-              {itemToDelete.oem_code || 'Nessuno'})? Questa operazione non può essere annullata.
+              <strong className="text-[#1A2322]">"{itemToDelete.title}"</strong> (OEM:{' '}
+              <span className="font-mono">{itemToDelete.oem_code || 'Nessuno'}</span>)? Questa operazione non può essere annullata.
             </p>
 
             {deleteError && (
-              <div className="p-3 bg-red-950/50 border border-red-800 rounded-lg text-xs text-red-300 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <span>{deleteError}</span>
-              </div>
+              <AlertBanner tone="danger">{deleteError}</AlertBanner>
             )}
 
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#EEF2F1]">
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={isDeleting}
                 onClick={() => {
                   setItemToDelete(null);
                   setDeleteError(null);
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium cursor-pointer"
               >
                 Annulla
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={isDeleting}
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5"
               >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Eliminazione...</span>
-                  </>
-                ) : (
-                  <span>Elimina Definitivamente</span>
-                )}
-              </button>
+                {isDeleting ? 'Eliminazione...' : 'Elimina Definitivamente'}
+              </Button>
             </div>
           </div>
         </div>

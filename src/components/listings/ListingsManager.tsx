@@ -5,18 +5,14 @@ import {
   Search,
   RefreshCw,
   ShoppingBag,
-  Eye,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
-  Loader2,
   Globe,
-  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
   DollarSign,
-  Package,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { InventoryItem, InventoryFilters } from '../../types/inventory';
@@ -25,6 +21,16 @@ import {
   updateInventoryItem,
   markInventorySoldOffline,
 } from '../../services/partsService';
+import { openExternalUrl } from '../../services/externalLinkService';
+import {
+  uiClasses,
+  Button,
+  KpiCard,
+  StatusBadge,
+  AlertBanner,
+  LoadingState,
+  EmptyState,
+} from '../ui/DesignSystem';
 
 export const ListingsManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
@@ -41,13 +47,11 @@ export const ListingsManager: React.FC = () => {
   const [page, setPage] = useState<number>(1);
   const pageSize = 20;
 
-  // Stato per azione rapida scarico banco
   const [saleItem, setSaleItem] = useState<InventoryItem | null>(null);
   const [saleQuantity, setSaleQuantity] = useState<number>(1);
   const [isProcessingSale, setIsProcessingSale] = useState<boolean>(false);
   const [saleError, setSaleError] = useState<string | null>(null);
 
-  // Stato per toggle online/offline rapido
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{
     type: 'success' | 'error';
@@ -84,16 +88,14 @@ export const ListingsManager: React.FC = () => {
     loadListings();
   }, [loadListings]);
 
-  // Gestione toggle visibilità online con controllo scorte
   const handleToggleStatus = async (item: InventoryItem) => {
     if (!sellerId) return;
     setActionFeedback(null);
 
-    // Blocco esplicito se la giacenza è zero o esaurita
     if (item.status !== 'available' && (!item.quantity || item.quantity <= 0)) {
       setActionFeedback({
         type: 'error',
-        message: `Impossibile attivare online "${item.title}": la giacenza a magazzino è pari a 0 pezzi. Per garantire affidabilità agli acquirenti di Autopia Shop, ricarica prima la disponibilità.`,
+        message: `Impossibile attivare online "${item.title}": la giacenza a magazzino è pari a 0 pezzi. Ricarica prima la disponibilità.`,
       });
       return;
     }
@@ -127,7 +129,6 @@ export const ListingsManager: React.FC = () => {
     }
   };
 
-  // Esecuzione scarico vendita al banco
   const handleConfirmSale = async () => {
     if (!sellerId || !saleItem) return;
     if (saleQuantity < 1 || saleQuantity > saleItem.quantity) {
@@ -154,101 +155,94 @@ export const ListingsManager: React.FC = () => {
     }
   };
 
-  // Statistiche calcolate
   const totalPageValue = items.reduce((acc, it) => acc + Number(it.price) * (it.quantity || 0), 0);
   const totalSoldInView = items.reduce((acc, it) => acc + (it.sold_quantity || 0), 0);
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans text-slate-100">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322]">
       {/* Intestazione */}
-      <div className="p-6 border-b border-slate-800 bg-slate-900/60 space-y-4 shrink-0">
+      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 flex items-center space-x-1">
-                <Globe className="w-3 h-3 text-emerald-400" />
-                <span>Marketplace Autopia Shop Sync</span>
-              </span>
-              <span className="text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
+              <span className="font-semibold text-[#074E44]">
                 {currentSeller?.business_name || 'Autodemolitore'}
               </span>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1">
+                <Globe className="w-3 h-3 text-[#0D9488]" />
+                <span>Autopia Shop Sync</span>
+              </span>
             </div>
-            <h1 className="text-xl font-bold text-slate-100 mt-1 flex items-center space-x-2">
-              <Store className="w-5 h-5 text-emerald-400" />
+            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
+              <Store className="w-5 h-5 text-[#074E44]" />
               <span>Annunci & Visibilità Online</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Controllo immediato delle inserzioni visibili su <strong className="text-emerald-400">autopiashop.it</strong> e gestione scarico rapido vendite al banco.
+            <p className="text-xs text-[#5C6B68] mt-0.5">
+              Controlla le inserzioni pubblicate su <strong className="text-[#074E44]">autopiashop.it</strong> e registra eventuali vendite al banco.
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <a
-              href="https://autopiashop.it"
-              target="_blank"
-              rel="noreferrer"
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors border border-slate-700"
+          <div className="flex items-center gap-2.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => openExternalUrl('https://autopiashop.it')}
             >
-              <span>Vedi Marketplace</span>
-              <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-            </a>
+              <span>Apri Autopia Shop</span>
+              <ExternalLink className="w-3.5 h-3.5 text-[#074E44]" />
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => loadListings()}
               disabled={isLoading}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors"
               title="Ricarica annunci"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
-            </button>
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
+              <span>Aggiorna</span>
+            </Button>
           </div>
         </div>
 
-        {/* Schede KPI Marketplace */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>Annunci Filtrati</span>
+        {/* Schede KPI */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="Annunci filtrati"
+            value={totalCount.toLocaleString('it-IT')}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+            accent="success"
+          />
+          <KpiCard
+            label="Valore listino vista"
+            value={`€ ${totalPageValue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={<DollarSign className="w-4 h-4" />}
+            accent="brand"
+          />
+          <KpiCard
+            label="Pezzi venduti (vista)"
+            value={`${totalSoldInView} pz`}
+            icon={<ShoppingBag className="w-4 h-4" />}
+          />
+          <div className="bg-white border border-[#E2E8E7] rounded-xl p-4 shadow-[0_1px_2px_rgba(7,78,68,0.03)] flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-medium text-[#5C6B68]">
+              <span>Stato venditore</span>
+              <TrendingUp className="w-4 h-4 text-[#074E44]/80" />
             </div>
-            <div className="text-xl font-bold text-emerald-400 mt-1">{totalCount}</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <DollarSign className="w-3 h-3 text-amber-400" />
-              <span>Valore Listino Vista</span>
-            </div>
-            <div className="text-xl font-bold text-amber-400 mt-1">€ {totalPageValue.toFixed(2)}</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <ShoppingBag className="w-3 h-3 text-blue-400" />
-              <span>Pezzi Venduti Vista</span>
-            </div>
-            <div className="text-xl font-bold text-blue-400 mt-1">{totalSoldInView} pz</div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <TrendingUp className="w-3 h-3 text-purple-400" />
-              <span>Stato Venditore</span>
-            </div>
-            <div className="text-xs font-bold text-slate-100 uppercase mt-2">
-              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-mono">
-                {currentSeller?.status || 'APPROVED'}
-              </span>
+            <div className="mt-2">
+              <StatusBadge tone="success">
+                {(currentSeller?.status || 'approved').toUpperCase()}
+              </StatusBadge>
             </div>
           </div>
         </div>
 
         {/* Filtri */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <div className="relative md:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8A9895]" />
             <input
               type="text"
               value={search}
@@ -257,78 +251,50 @@ export const ListingsManager: React.FC = () => {
                 setPage(1);
               }}
               placeholder="Cerca annuncio per titolo ricambio, codice OEM o matricola..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              className={`${uiClasses.input} pl-8`}
             />
           </div>
 
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as InventoryFilters['status']);
-                setPage(1);
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-            >
-              <option value="available">Solo Annunci Attivi (Online)</option>
-              <option value="inactive">Annunci Sospesi (Offline)</option>
-              <option value="reserved">Annunci Riservati</option>
-              <option value="sold">Annunci Venduti / Esauriti</option>
-              <option value="all">Tutti gli annunci</option>
-            </select>
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as InventoryFilters['status']);
+              setPage(1);
+            }}
+            className={uiClasses.select}
+          >
+            <option value="available">Solo Annunci Attivi (Online)</option>
+            <option value="inactive">Annunci Sospesi (Offline)</option>
+            <option value="reserved">Annunci Riservati</option>
+            <option value="sold">Annunci Venduti / Esauriti</option>
+            <option value="all">Tutti gli annunci</option>
+          </select>
         </div>
       </div>
 
       {/* Lista Annunci */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {/* Banner Notifica Operazione Annuncio */}
         {actionFeedback && (
-          <div
-            className={`p-3.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
-              actionFeedback.type === 'success'
-                ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-300'
-                : 'bg-red-950/60 border-red-800/80 text-red-300'
-            }`}
+          <AlertBanner
+            tone={actionFeedback.type === 'success' ? 'success' : 'danger'}
+            onDismiss={() => setActionFeedback(null)}
           >
-            <div className="flex items-center space-x-2">
-              {actionFeedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              )}
-              <span>{actionFeedback.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActionFeedback(null)}
-              className="text-slate-400 hover:text-slate-200 text-xs px-2 py-0.5"
-            >
-              Chiudi
-            </button>
-          </div>
+            {actionFeedback.message}
+          </AlertBanner>
         )}
 
         {isLoading ? (
-          <div className="h-64 flex flex-col items-center justify-center space-y-3 text-slate-400">
-            <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
-            <p className="text-xs">Sincronizzazione annunci con il catalogo...</p>
-          </div>
+          <LoadingState message="Sincronizzazione annunci con il catalogo..." />
         ) : error ? (
-          <div className="p-4 rounded-lg bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center space-x-2">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />
-            <span>{error}</span>
-          </div>
+          <AlertBanner tone="danger" title="Errore caricamento annunci">
+            {error}
+          </AlertBanner>
         ) : items.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center space-y-3 bg-slate-900/40 rounded-xl border border-slate-800 border-dashed text-slate-400">
-            <Store className="w-10 h-10 text-slate-600" />
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-300">Nessun annuncio in questo stato</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Modifica i filtri o attiva nuovi ricambi dal modulo Magazzino.
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            icon={<Store className="w-6 h-6" />}
+            title="Nessun annuncio in questo stato"
+            description="Modifica i filtri o attiva nuovi ricambi dalla sezione Magazzino & Ricambi."
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {items.map((item) => {
@@ -338,105 +304,89 @@ export const ListingsManager: React.FC = () => {
               return (
                 <div
                   key={item.id}
-                  className="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-4 transition-all"
+                  className="bg-white border border-[#E2E8E7] hover:border-[#C6DFDA] rounded-xl p-4 flex flex-col justify-between space-y-4 transition-colors shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span
-                            className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border flex items-center space-x-1 ${
-                              isOnline
-                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
-                                : 'bg-slate-950 text-slate-400 border-slate-800'
-                            }`}
-                          >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge tone={isOnline ? 'success' : 'neutral'}>
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${
-                                isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                                isOnline ? 'bg-emerald-600' : 'bg-slate-400'
                               }`}
                             />
                             <span>{isOnline ? 'Online su Autopia' : item.status.toUpperCase()}</span>
-                          </span>
+                          </StatusBadge>
 
                           {item.oem_code && (
-                            <span className="font-mono text-[10px] text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                            <span className="font-mono text-[11px] text-[#5C6B68] bg-[#FAFBFB] px-2 py-0.5 rounded border border-[#E2E8E7]">
                               OEM: {item.oem_code}
                             </span>
                           )}
                         </div>
 
-                        <h3 className="text-sm font-bold text-slate-100 mt-1.5 line-clamp-1">
+                        <h3 className="text-sm font-bold text-[#162220] mt-2 line-clamp-1">
                           {item.title}
                         </h3>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <div className="text-base font-bold text-amber-400">
+                      <div className="text-right shrink-0 tabular-nums">
+                        <div className="text-base font-bold text-[#074E44]">
                           € {Number(item.price).toFixed(2)}
                         </div>
-                        <div className="text-[10px] text-slate-400">
-                          Giacenza: <strong>{item.quantity}</strong> pz
+                        <div className="text-[11px] text-[#5C6B68]">
+                          Giacenza: <strong className="text-[#1A2322]">{item.quantity}</strong> pz
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 pt-2 text-[11px] text-slate-400 border-t border-slate-800/60">
+                    <div className="grid grid-cols-3 gap-2 pt-2.5 text-[11px] text-[#5C6B68] border-t border-[#EEF2F1]">
                       <div>
                         Condizione:{' '}
-                        <span className="text-slate-200 capitalize font-medium">{item.condition}</span>
+                        <span className="text-[#1A2322] capitalize font-semibold">{item.condition}</span>
                       </div>
-                      <div>
+                      <div className="truncate">
                         Scaffale:{' '}
-                        <span className="text-amber-300 font-medium">{item.position_note || '—'}</span>
+                        <span className="text-[#074E44] font-semibold">{item.position_note || '—'}</span>
                       </div>
-                      <div>
+                      <div className="tabular-nums">
                         Venduti:{' '}
-                        <span className="text-emerald-400 font-medium">{item.sold_quantity || 0}</span>
+                        <span className="text-emerald-700 font-semibold">{item.sold_quantity || 0}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Pulsantiera Rapida Annuncio */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
-                    <button
-                      type="button"
+                  <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-[#EEF2F1]">
+                    <Button
+                      variant={isOnline ? 'secondary' : 'success'}
+                      size="xs"
                       disabled={isToggling}
+                      loading={isToggling}
                       onClick={() => handleToggleStatus(item)}
-                      className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
-                        isOnline
-                          ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                          : 'bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/50'
-                      }`}
                     >
-                      {isToggling ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : isOnline ? (
-                        <>
-                          <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                          <span>Metti Offline</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Pubblica Online</span>
-                        </>
-                      )}
-                    </button>
+                      {!isToggling &&
+                        (isOnline ? (
+                          <XCircle className="w-3.5 h-3.5 text-red-600" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        ))}
+                      <span>{isOnline ? 'Metti Offline' : 'Pubblica Online'}</span>
+                    </Button>
 
                     {item.quantity > 0 && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="primary"
+                        size="xs"
                         onClick={() => {
                           setSaleItem(item);
                           setSaleQuantity(1);
                           setSaleError(null);
                         }}
-                        className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded text-xs font-bold flex items-center space-x-1.5 transition-colors shadow-sm"
                       >
                         <ShoppingBag className="w-3.5 h-3.5" />
                         <span>Scarico Vendita Banco</span>
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -448,110 +398,109 @@ export const ListingsManager: React.FC = () => {
 
       {/* Paginazione */}
       {totalPages > 1 && (
-        <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400 shrink-0">
-          <div>
-            Visualizzazione di {items.length} su <strong>{totalCount}</strong> inserzioni
+        <div className="px-6 py-3 border-t border-[#E2E8E7] bg-white flex items-center justify-between text-xs text-[#5C6B68] shrink-0">
+          <div className="tabular-nums">
+            Visualizzazione di <strong className="text-[#1A2322]">{items.length}</strong> su{' '}
+            <strong className="text-[#1A2322]">{totalCount}</strong> inserzioni
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="xs"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded bg-slate-900 border border-slate-800 disabled:opacity-40 hover:bg-slate-800 text-slate-200"
             >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-2">
-              Pagina <strong>{page}</strong> di <strong>{totalPages}</strong>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </Button>
+            <span className="px-2 tabular-nums">
+              Pagina <strong className="text-[#1A2322]">{page}</strong> di{' '}
+              <strong className="text-[#1A2322]">{totalPages}</strong>
             </span>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="xs"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded bg-slate-900 border border-slate-800 disabled:opacity-40 hover:bg-slate-800 text-slate-200"
             >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
       )}
 
       {/* Modal Scarico Rapido Vendita al Banco */}
       {saleItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl font-sans">
-            <div className="flex items-center space-x-3 text-emerald-400">
-              <div className="p-2 bg-emerald-500/15 border border-emerald-500/30 rounded-lg">
-                <ShoppingBag className="w-6 h-6 text-emerald-400" />
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8E7] rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl font-sans">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#EAF3F1] border border-[#C6DFDA] text-[#074E44] rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#162220]">Registra Vendita al Banco</h3>
+                  <p className="text-xs text-[#5C6B68]">Scarico rapido giacenza da officina</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-100">Registra Vendita al Banco</h3>
-                <p className="text-xs text-slate-400">Scarico rapido giacenza da officina</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSaleItem(null)}
+                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1 text-xs">
-              <div className="font-semibold text-slate-200">{saleItem.title}</div>
-              <div className="text-slate-400 font-mono">OEM: {saleItem.oem_code || 'N/D'}</div>
-              <div className="text-amber-400 font-bold text-sm pt-1">
+            <div className="bg-[#FAFBFB] p-3.5 rounded-xl border border-[#E2E8E7] space-y-1 text-xs">
+              <div className="font-bold text-[#1A2322]">{saleItem.title}</div>
+              <div className="text-[#5C6B68] font-mono">OEM: {saleItem.oem_code || 'N/D'}</div>
+              <div className="text-[#074E44] font-bold text-sm pt-1 tabular-nums">
                 Prezzo unitario: € {Number(saleItem.price).toFixed(2)}
               </div>
-              <div className="text-slate-400">
-                Giacenza attuale disponibile: <strong className="text-slate-200">{saleItem.quantity}</strong> pezzi
+              <div className="text-[#5C6B68] tabular-nums">
+                Giacenza attuale disponibile:{' '}
+                <strong className="text-[#1A2322]">{saleItem.quantity}</strong> pezzi
               </div>
             </div>
 
-            {saleError && (
-              <div className="p-2.5 rounded bg-red-950/60 border border-red-800/80 text-red-300 text-xs">
-                {saleError}
-              </div>
-            )}
+            {saleError && <AlertBanner tone="danger">{saleError}</AlertBanner>}
 
-            <div className="space-y-1">
-              <label className="text-xs text-slate-300 font-medium block">
-                Quantità Venduta al Cliente:
-              </label>
+            <div>
+              <label className={uiClasses.label}>Quantità Venduta al Cliente</label>
               <input
                 type="number"
                 min="1"
                 max={saleItem.quantity}
                 value={saleQuantity}
                 onChange={(e) => setSaleQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 font-bold focus:outline-none focus:border-emerald-500"
+                className={`${uiClasses.input} text-sm font-bold tabular-nums`}
               />
             </div>
 
-            <div className="p-3 bg-slate-950/80 rounded border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
-              Lo scarico ridurrà immediatamente la disponibilità del ricambio. Se la giacenza residua arriva a 0, l'annuncio verrà automaticamente contrassegnato come <strong className="text-slate-300">VENDUTO</strong> su Autopia Shop per prevenire ordini duplicati.
+            <div className="p-3 bg-[#FAFBFB] rounded-lg border border-[#E2E8E7] text-[11px] text-[#5C6B68] leading-relaxed">
+              Lo scarico ridurrà immediatamente la disponibilità. Se la giacenza residua arriva a 0,
+              l'annuncio verrà contrassegnato come <strong className="text-[#1A2322]">VENDUTO</strong> su
+              Autopia Shop per prevenire ordini duplicati.
             </div>
 
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#EEF2F1]">
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={isProcessingSale}
                 onClick={() => setSaleItem(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium"
               >
                 Annulla
-              </button>
-              <button
-                type="button"
-                disabled={isProcessingSale}
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={isProcessingSale}
                 onClick={handleConfirmSale}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-lg shadow-emerald-600/20"
               >
-                {isProcessingSale ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Registrazione in corso...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Conferma Scarico Banco</span>
-                  </>
-                )}
-              </button>
+                {!isProcessingSale && <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>{isProcessingSale ? 'Registrazione...' : 'Conferma Scarico Banco'}</span>
+              </Button>
             </div>
           </div>
         </div>

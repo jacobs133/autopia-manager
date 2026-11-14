@@ -4,14 +4,9 @@ import {
   Download,
   Upload,
   CheckCircle2,
-  AlertCircle,
-  Loader2,
   FileText,
   Layers,
-  ArrowRight,
-  RefreshCw,
   Check,
-  X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { CsvPartRow } from '../../types/inventory';
@@ -19,6 +14,12 @@ import {
   batchImportInventory,
   BatchImportResult,
 } from '../../services/partsService';
+import {
+  uiClasses,
+  Button,
+  AlertBanner,
+  StatusBadge,
+} from '../ui/DesignSystem';
 
 export const CsvImportManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
@@ -35,7 +36,6 @@ export const CsvImportManager: React.FC = () => {
   const [uiAlert, setUiAlert] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
   const [expandedSection, setExpandedSection] = useState<'errors' | 'ignored' | 'duplicates' | null>(null);
 
-  // Template CSV Autopia di esempio
   const downloadSampleCsv = () => {
     const sampleHeaders = [
       'title',
@@ -124,7 +124,6 @@ export const CsvImportManager: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Funzione di utilità per il parsing numerico e valute italiane (es. 65,50 o € 65,50 o 1.250,00)
   const parseItalianDecimal = (raw: string | undefined): number => {
     if (!raw) return 0;
     let s = raw.trim().replace(/[€$£\s]/g, '');
@@ -133,26 +132,21 @@ export const CsvImportManager: React.FC = () => {
     const lastComma = s.lastIndexOf(',');
     if (lastDot !== -1 && lastComma !== -1) {
       if (lastComma > lastDot) {
-        // Formato italiano: 1.250,50 -> 1250.50
         s = s.replace(/\./g, '').replace(',', '.');
       } else {
-        // Formato internazionale: 1,250.50 -> 1250.50
         s = s.replace(/,/g, '');
       }
     } else if (lastComma !== -1) {
-      // Formato con sola virgola: 65,50 -> 65.50
       s = s.replace(',', '.');
     }
     const val = parseFloat(s);
     return isNaN(val) ? 0 : val;
   };
 
-  // Parser RFC 4180 conforme che supporta virgola, punto e virgola, tabulazioni, virgolette e ritorni a capo
   const parseCsvTable = (text: string): { headers: string[]; rows: string[][] } => {
     const clean = text.replace(/^\uFEFF/, '');
     if (!clean.trim()) return { headers: [], rows: [] };
 
-    // Rileva delimitatore analizzando la prima riga al di fuori delle virgolette
     let firstLine = '';
     let inQ = false;
     for (let i = 0; i < clean.length; i++) {
@@ -192,7 +186,7 @@ export const CsvImportManager: React.FC = () => {
       if (char === '"') {
         if (insideQuotes && nextChar === '"') {
           currentField += '"';
-          i++; // salta virgoletta di escape
+          i++;
         } else {
           insideQuotes = !insideQuotes;
         }
@@ -201,7 +195,7 @@ export const CsvImportManager: React.FC = () => {
         currentField = '';
       } else if ((char === '\r' || char === '\n') && !insideQuotes) {
         if (char === '\r' && nextChar === '\n') {
-          i++; // salta \n in \r\n
+          i++;
         }
         currentRow.push(currentField.trim());
         currentField = '';
@@ -227,7 +221,6 @@ export const CsvImportManager: React.FC = () => {
     return { headers, rows };
   };
 
-  // Parser CSV pulito con rilevamento automatico del separatore e supporto caratteri italiani
   const parseCsvText = (text: string) => {
     setParseErrors([]);
     setImportResult(null);
@@ -303,7 +296,6 @@ export const CsvImportManager: React.FC = () => {
     setParseErrors(errors);
   };
 
-  // Caricamento file da disco
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -318,15 +310,20 @@ export const CsvImportManager: React.FC = () => {
     reader.readAsText(file, 'UTF-8');
   };
 
-  // Esecuzione importazione
   const handleExecuteImport = async () => {
     if (!sellerId) {
-      setUiAlert({ type: 'error', message: 'Nessun profilo venditore selezionato o autorizzato per l\'importazione.' });
+      setUiAlert({
+        type: 'error',
+        message: "Nessun profilo venditore selezionato o autorizzato per l'importazione.",
+      });
       return;
     }
 
     if (parsedRows.length === 0) {
-      setUiAlert({ type: 'warning', message: 'Nessuna riga valida da importare. Seleziona un file CSV o incolla il testo dei ricambi.' });
+      setUiAlert({
+        type: 'warning',
+        message: 'Nessuna riga valida da importare. Seleziona un file CSV o incolla il testo dei ricambi.',
+      });
       return;
     }
 
@@ -341,7 +338,7 @@ export const CsvImportManager: React.FC = () => {
         setFileName(null);
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Eccezione durante l\'importazione';
+      const msg = e instanceof Error ? e.message : "Eccezione durante l'importazione";
       setImportResult({
         insertedCount: 0,
         ignoredCount: 0,
@@ -356,160 +353,140 @@ export const CsvImportManager: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans text-slate-100 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322] overflow-y-auto">
       {/* Header */}
-      <div className="p-6 border-b border-slate-800 bg-slate-900/60 space-y-4">
+      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                Fase 2 • Importazione Dati
-              </span>
-              <span className="text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
+              <span className="font-semibold text-[#074E44]">
                 {currentSeller?.business_name || 'Autodemolitore'}
               </span>
+              <span>•</span>
+              <span>Importazione Dati</span>
             </div>
-            <h1 className="text-xl font-bold text-slate-100 mt-1 flex items-center space-x-2">
-              <FileSpreadsheet className="w-5 h-5 text-amber-400" />
+            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-[#074E44]" />
               <span>Importazione Massiva Ricambi (CSV)</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Carica le giacenze del tuo magazzino da file Excel/CSV con mappatura automatica categorie e codici OEM.
+            <p className="text-xs text-[#5C6B68] mt-0.5">
+              Carica le giacenze del magazzino da file Excel/CSV con mappatura automatica di categorie e codici OEM.
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <button
-              type="button"
-              onClick={downloadSampleCsv}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors border border-slate-700 shadow-sm cursor-pointer"
-            >
-              <Download className="w-4 h-4 text-amber-400" />
-              <span>Scarica File CSV Esempio</span>
-            </button>
-          </div>
+          <Button variant="secondary" size="sm" onClick={downloadSampleCsv}>
+            <Download className="w-4 h-4 text-[#074E44]" />
+            <span>Scarica File CSV Esempio</span>
+          </Button>
         </div>
       </div>
 
       <div className="p-6 max-w-5xl mx-auto w-full space-y-6">
-        {/* Avviso Interfaccia Locale */}
         {uiAlert && (
-          <div
-            className={`p-3.5 rounded-xl border text-xs flex items-center justify-between transition-all ${
-              uiAlert.type === 'error'
-                ? 'bg-red-950/60 border-red-800 text-red-200'
-                : uiAlert.type === 'warning'
-                ? 'bg-amber-950/60 border-amber-800 text-amber-200'
-                : 'bg-blue-950/60 border-blue-800 text-blue-200'
-            }`}
+          <AlertBanner
+            tone={uiAlert.type === 'error' ? 'danger' : uiAlert.type === 'warning' ? 'warning' : 'info'}
+            onDismiss={() => setUiAlert(null)}
           >
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{uiAlert.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setUiAlert(null)}
-              className="text-slate-400 hover:text-slate-200 text-xs px-2 py-0.5 cursor-pointer"
-            >
-              Chiudi
-            </button>
-          </div>
+            {uiAlert.message}
+          </AlertBanner>
         )}
 
         {/* Esito Importazione Dettagliato a 4 Metriche */}
         {importResult && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                <h3 className="text-sm font-bold text-slate-100">
+          <div className={`${uiClasses.card} p-5 space-y-4`}>
+            <div className="flex items-center justify-between border-b border-[#EEF2F1] pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <h3 className="text-sm font-bold text-[#162220]">
                   Riepilogo Elaborazione Importazione CSV
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setImportResult(null)}
-                className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                className="text-xs text-[#5C6B68] hover:text-[#1A2322] font-medium cursor-pointer"
               >
                 Chiudi Riepilogo
               </button>
             </div>
 
-            {/* 4 Quadranti Statistici */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-              {/* 1. Righe Importate Correttamente */}
-              <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-lg p-3 text-emerald-300">
-                <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-400">
-                  Importati con Successo
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-900">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                  Importati
                 </div>
-                <div className="text-xl font-extrabold mt-1">{importResult.insertedCount}</div>
-                <div className="text-[10px] text-emerald-400/80 mt-0.5">Ricambi a magazzino</div>
+                <div className="text-2xl font-bold mt-1 tabular-nums">{importResult.insertedCount}</div>
+                <div className="text-[11px] text-emerald-700 mt-0.5">Ricambi a magazzino</div>
               </div>
 
-              {/* 2. Righe Ignorate */}
-              <div
+              <button
+                type="button"
                 onClick={() =>
                   setExpandedSection(expandedSection === 'ignored' ? null : 'ignored')
                 }
-                className={`border rounded-lg p-3 cursor-pointer transition-all ${
+                className={`text-left border rounded-xl p-3.5 cursor-pointer transition-colors ${
                   importResult.ignoredCount > 0
-                    ? 'bg-slate-950 border-slate-700 hover:border-slate-500 text-slate-300'
-                    : 'bg-slate-950/50 border-slate-800 text-slate-500'
+                    ? 'bg-[#FAFBFB] border-[#D7E0DE] hover:border-[#074E44] text-[#1A2322]'
+                    : 'bg-[#FAFBFB] border-[#E2E8E7] text-[#8A9895]'
                 }`}
               >
-                <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 flex items-center justify-between">
+                <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between">
                   <span>Righe Ignorate</span>
-                  {importResult.ignoredCount > 0 && <span className="text-[9px] underline">Dettagli</span>}
+                  {importResult.ignoredCount > 0 && (
+                    <span className="text-[10px] underline text-[#074E44]">Dettagli</span>
+                  )}
                 </div>
-                <div className="text-xl font-extrabold mt-1">{importResult.ignoredCount}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">Titoli assenti o vuoti</div>
-              </div>
+                <div className="text-2xl font-bold mt-1 tabular-nums">{importResult.ignoredCount}</div>
+                <div className="text-[11px] text-[#5C6B68] mt-0.5">Titoli assenti o vuoti</div>
+              </button>
 
-              {/* 3. Duplicati Rilevati */}
-              <div
+              <button
+                type="button"
                 onClick={() =>
                   setExpandedSection(expandedSection === 'duplicates' ? null : 'duplicates')
                 }
-                className={`border rounded-lg p-3 cursor-pointer transition-all ${
+                className={`text-left border rounded-xl p-3.5 cursor-pointer transition-colors ${
                   importResult.duplicateCount > 0
-                    ? 'bg-amber-950/40 border-amber-800/80 hover:border-amber-600 text-amber-300'
-                    : 'bg-slate-950/50 border-slate-800 text-slate-500'
+                    ? 'bg-amber-50 border-amber-200 hover:border-amber-400 text-amber-900'
+                    : 'bg-[#FAFBFB] border-[#E2E8E7] text-[#8A9895]'
                 }`}
               >
-                <div className="text-[10px] uppercase font-bold tracking-wider text-amber-400 flex items-center justify-between">
+                <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between">
                   <span>Duplicati Rilevati</span>
-                  {importResult.duplicateCount > 0 && <span className="text-[9px] underline">Dettagli</span>}
+                  {importResult.duplicateCount > 0 && (
+                    <span className="text-[10px] underline">Dettagli</span>
+                  )}
                 </div>
-                <div className="text-xl font-extrabold mt-1">{importResult.duplicateCount}</div>
-                <div className="text-[10px] text-amber-400/80 mt-0.5">Codici OEM o interni duplicati</div>
-              </div>
+                <div className="text-2xl font-bold mt-1 tabular-nums">{importResult.duplicateCount}</div>
+                <div className="text-[11px] opacity-80 mt-0.5">Codici OEM o interni duplicati</div>
+              </button>
 
-              {/* 4. Righe con Errori */}
-              <div
+              <button
+                type="button"
                 onClick={() =>
                   setExpandedSection(expandedSection === 'errors' ? null : 'errors')
                 }
-                className={`border rounded-lg p-3 cursor-pointer transition-all ${
+                className={`text-left border rounded-xl p-3.5 cursor-pointer transition-colors ${
                   importResult.errors.length > 0
-                    ? 'bg-red-950/40 border-red-800/80 hover:border-red-600 text-red-300'
-                    : 'bg-slate-950/50 border-slate-800 text-slate-500'
+                    ? 'bg-red-50 border-red-200 hover:border-red-400 text-red-900'
+                    : 'bg-[#FAFBFB] border-[#E2E8E7] text-[#8A9895]'
                 }`}
               >
-                <div className="text-[10px] uppercase font-bold tracking-wider text-red-400 flex items-center justify-between">
+                <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between">
                   <span>Errori Riscontrati</span>
-                  {importResult.errors.length > 0 && <span className="text-[9px] underline">Dettagli</span>}
+                  {importResult.errors.length > 0 && (
+                    <span className="text-[10px] underline">Dettagli</span>
+                  )}
                 </div>
-                <div className="text-xl font-extrabold mt-1">{importResult.errors.length}</div>
-                <div className="text-[10px] text-red-400/80 mt-0.5">Scartati durante il salvataggio</div>
-              </div>
+                <div className="text-2xl font-bold mt-1 tabular-nums">{importResult.errors.length}</div>
+                <div className="text-[11px] opacity-80 mt-0.5">Scartati in salvataggio</div>
+              </button>
             </div>
 
-            {/* Dettagli Sezione Espansa */}
             {expandedSection === 'ignored' && importResult.ignoredDetails.length > 0 && (
-              <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800 text-xs space-y-1">
-                <div className="font-bold text-slate-300">Dettaglio righe ignorate:</div>
-                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-slate-400 font-mono text-[11px]">
+              <div className="bg-[#FAFBFB] p-3.5 rounded-xl border border-[#E2E8E7] text-xs space-y-1">
+                <div className="font-bold text-[#1A2322]">Dettaglio righe ignorate:</div>
+                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-[#5C6B68] font-mono text-[11px]">
                   {importResult.ignoredDetails.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -518,9 +495,9 @@ export const CsvImportManager: React.FC = () => {
             )}
 
             {expandedSection === 'duplicates' && importResult.duplicateDetails.length > 0 && (
-              <div className="bg-amber-950/30 p-3.5 rounded-lg border border-amber-800/60 text-xs space-y-1">
-                <div className="font-bold text-amber-300">Dettaglio codici duplicati scartati:</div>
-                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-amber-200/90 font-mono text-[11px]">
+              <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-xs space-y-1">
+                <div className="font-bold text-amber-900">Dettaglio codici duplicati scartati:</div>
+                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-amber-800 font-mono text-[11px]">
                   {importResult.duplicateDetails.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -529,9 +506,9 @@ export const CsvImportManager: React.FC = () => {
             )}
 
             {expandedSection === 'errors' && importResult.errors.length > 0 && (
-              <div className="bg-red-950/30 p-3.5 rounded-lg border border-red-800/60 text-xs space-y-1">
-                <div className="font-bold text-red-300">Dettaglio errori di salvataggio:</div>
-                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-red-200/90 font-mono text-[11px]">
+              <div className="bg-red-50 p-3.5 rounded-xl border border-red-200 text-xs space-y-1">
+                <div className="font-bold text-red-900">Dettaglio errori di salvataggio:</div>
+                <ul className="list-disc list-inside max-h-40 overflow-y-auto space-y-1 text-red-800 font-mono text-[11px]">
                   {importResult.errors.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -543,20 +520,21 @@ export const CsvImportManager: React.FC = () => {
 
         {/* Box Upload e Istruzioni */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-              <div className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
-                <Upload className="w-4 h-4 text-amber-400" />
-                <span>Carica il tuo file CSV o incolla i dati</span>
+          <div className="md:col-span-2">
+            <div className={`${uiClasses.card} p-5 space-y-4`}>
+              <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5">
+                <Upload className="w-4 h-4" />
+                <span>Carica il file CSV o incolla i dati</span>
               </div>
 
-              {/* Area Drag & Drop / File Input */}
-              <label className="border-2 border-dashed border-slate-700 hover:border-amber-500/60 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-slate-950/40">
-                <Upload className="w-8 h-8 text-slate-500 mb-2" />
-                <span className="text-xs font-semibold text-slate-200">
+              <label className="border-2 border-dashed border-[#C6DFDA] hover:border-[#074E44] rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-[#FAFBFB] hover:bg-[#EAF3F1]/40">
+                <div className="w-11 h-11 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center mb-2.5">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold text-[#1A2322]">
                   {fileName ? fileName : 'Seleziona un file CSV dal tuo computer'}
                 </span>
-                <span className="text-[11px] text-slate-500 mt-1">
+                <span className="text-[11px] text-[#5C6B68] mt-1">
                   Separatore virgola o punto e virgola, codifica UTF-8
                 </span>
                 <input
@@ -567,11 +545,8 @@ export const CsvImportManager: React.FC = () => {
                 />
               </label>
 
-              {/* Textarea alternativa per incollare CSV da blocco note */}
-              <div className="space-y-1">
-                <label className="text-xs text-slate-400 font-medium block">
-                  Oppure incolla direttamente il testo CSV qui:
-                </label>
+              <div>
+                <label className={uiClasses.label}>Oppure incolla direttamente il testo CSV:</label>
                 <textarea
                   rows={4}
                   value={csvContent}
@@ -580,104 +555,96 @@ export const CsvImportManager: React.FC = () => {
                     parseCsvText(e.target.value);
                   }}
                   placeholder="title,oem_code,price,quantity,condition,position_note&#10;Motorino Avviamento,02M911023,70.00,1,ottimo,Scaffale A-02"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500"
+                  className={`${uiClasses.textarea} font-mono`}
                 />
               </div>
             </div>
           </div>
 
-          {/* Istruzioni e Standard Colonne */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3 text-xs text-slate-300">
-            <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5">
-              <FileText className="w-4 h-4" />
-              <span>Standard Colonne CSV</span>
+          {/* Standard Colonne */}
+          <div className={`${uiClasses.card} p-5 flex flex-col justify-between space-y-4`}>
+            <div className="space-y-3 text-xs text-[#3F4E4B]">
+              <div className="text-xs font-bold text-[#074E44] uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-4 h-4" />
+                <span>Standard Colonne CSV</span>
+              </div>
+              <p className="text-[11px] text-[#5C6B68] leading-relaxed">
+                Il parser riconosce automaticamente i seguenti campi nell'intestazione:
+              </p>
+              <div className="space-y-2 text-[11px]">
+                <div>
+                  <strong className="text-[#1A2322] font-mono">title</strong>{' '}
+                  <span className="text-red-600">*</span>: Nome del ricambio
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">oem_code</strong>: Codice originale costruttore
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">price</strong>: Prezzo in Euro (es. 45.00)
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">quantity</strong>: Giacenza pezzi (es. 1)
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">condition</strong>: ottimo, buono, discreto, da_revisionare
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">position_note</strong>: Posizione scaffale officina
+                </div>
+                <div>
+                  <strong className="text-[#1A2322] font-mono">category_name</strong>: Categoria (es. Elettrico)
+                </div>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Il parser riconosce automaticamente i seguenti campi nell'intestazione:
-            </p>
-            <div className="space-y-2 text-[11px]">
-              <div>
-                <strong className="text-slate-100">title</strong> <span className="text-red-400">*</span>: Nome del ricambio
-              </div>
-              <div>
-                <strong className="text-slate-100">oem_code</strong>: Codice originale costruttore
-              </div>
-              <div>
-                <strong className="text-slate-100">price</strong>: Prezzo in Euro (es. 45.00)
-              </div>
-              <div>
-                <strong className="text-slate-100">quantity</strong>: Giacenza pezzi (es. 1)
-              </div>
-              <div>
-                <strong className="text-slate-100">condition</strong>: ottimo, buono, discreto, da_revisionare
-              </div>
-              <div>
-                <strong className="text-slate-100">position_note</strong>: Posizione scaffale officina
-              </div>
-              <div>
-                <strong className="text-slate-100">category_name</strong>: Categoria Autopia (es. Elettrico)
-              </div>
-            </div>
-            <div className="pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={downloadSampleCsv}
-                className="w-full py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[11px] font-semibold text-center transition-colors"
-              >
-                Scarica Template Ufficiale (.csv)
-              </button>
+
+            <div className="pt-3 border-t border-[#EEF2F1]">
+              <Button variant="secondary" size="sm" onClick={downloadSampleCsv} className="w-full">
+                <Download className="w-3.5 h-3.5 text-[#074E44]" />
+                <span>Scarica Template (.csv)</span>
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Errori di Parsing */}
         {parseErrors.length > 0 && (
-          <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/80 text-red-300 text-xs space-y-1">
-            <div className="font-bold flex items-center space-x-1.5 text-red-400">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>Segnalazioni sul file CSV:</span>
-            </div>
-            <ul className="list-disc list-inside space-y-0.5">
+          <AlertBanner tone="danger" title="Segnalazioni sul file CSV">
+            <ul className="list-disc list-inside space-y-0.5 mt-1">
               {parseErrors.map((err, i) => (
                 <li key={i}>{err}</li>
               ))}
             </ul>
-          </div>
+          </AlertBanner>
         )}
 
-        {/* Tabella Anteprima Righe Riconosciute */}
+        {/* Tabella Anteprima */}
         {parsedRows.length > 0 && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
-                <Layers className="w-4 h-4 text-emerald-400" />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs font-bold text-[#162220] uppercase tracking-wider flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#074E44]" />
                 <span>Anteprima Righe Riconosciute ({parsedRows.length} ricambi pronti)</span>
               </div>
 
-              <button
-                type="button"
-                disabled={isImporting}
+              <Button
+                variant="primary"
+                size="sm"
+                loading={isImporting}
                 onClick={handleExecuteImport}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center space-x-2 transition-colors shadow-lg shadow-emerald-600/20"
               >
-                {isImporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Importazione in corso...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Conferma e Importa nel Magazzino ({parsedRows.length})</span>
-                  </>
-                )}
-              </button>
+                {!isImporting && <Check className="w-4 h-4" />}
+                <span>
+                  {isImporting
+                    ? 'Importazione in corso...'
+                    : `Conferma e Importa nel Magazzino (${parsedRows.length})`}
+                </span>
+              </Button>
             </div>
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 max-h-80 overflow-y-auto">
+            <div className={`${uiClasses.tableWrapper} max-h-80 overflow-y-auto`}>
               <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 uppercase text-[10px] font-semibold sticky top-0">
+                <thead className="sticky top-0 z-10">
+                  <tr className={uiClasses.tableHeadRow}>
                     <th className="py-2.5 px-3">#</th>
                     <th className="py-2.5 px-3">Titolo Ricambio</th>
                     <th className="py-2.5 px-3">Codice OEM</th>
@@ -688,17 +655,25 @@ export const CsvImportManager: React.FC = () => {
                     <th className="py-2.5 px-3">Categoria</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-[#EEF2F1]">
                   {parsedRows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/30">
-                      <td className="py-2 px-3 text-slate-500 font-mono">{idx + 1}</td>
-                      <td className="py-2 px-3 font-semibold text-slate-100">{row.title}</td>
-                      <td className="py-2 px-3 font-mono text-slate-300">{row.oem_code || '—'}</td>
-                      <td className="py-2 px-3 text-amber-400 font-bold">€ {row.price.toFixed(2)}</td>
-                      <td className="py-2 px-3 font-bold">{row.quantity}</td>
-                      <td className="py-2 px-3 capitalize text-slate-300">{row.condition}</td>
-                      <td className="py-2 px-3 text-amber-300">{row.position_note || '—'}</td>
-                      <td className="py-2 px-3 text-slate-400">{row.category_name || 'Generica'}</td>
+                    <tr key={idx} className="hover:bg-[#F7FAF9]">
+                      <td className="py-2.5 px-3 text-[#8A9895] font-mono tabular-nums">{idx + 1}</td>
+                      <td className="py-2.5 px-3 font-semibold text-[#1A2322]">{row.title}</td>
+                      <td className="py-2.5 px-3 font-mono text-[#3F4E4B]">{row.oem_code || '—'}</td>
+                      <td className="py-2.5 px-3 text-[#074E44] font-bold tabular-nums">
+                        € {row.price.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold tabular-nums">{row.quantity}</td>
+                      <td className="py-2.5 px-3 capitalize">
+                        <StatusBadge tone="neutral">{row.condition}</StatusBadge>
+                      </td>
+                      <td className="py-2.5 px-3 text-[#074E44] font-medium">
+                        {row.position_note || '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-[#5C6B68]">
+                        {row.category_name || 'Generica'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

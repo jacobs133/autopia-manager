@@ -23,17 +23,17 @@ export interface InventoryFilters {
 }
 
 export const PART_CONDITIONS: { value: PartCondition; label: string; description: string; color: string }[] = [
-  { value: 'ottimo', label: 'Ottimo (Pari al nuovo)', description: 'Nessun difetto visibile, pronto al montaggio', color: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60' },
-  { value: 'buono', label: 'Buono (Normale usura)', description: 'Funzionante con leggeri segni di normale utilizzo', color: 'bg-blue-950/80 text-blue-300 border-blue-800/60' },
-  { value: 'discreto', label: 'Discreto (Segni evidenti)', description: 'Integrità strutturale garantita, segni d\'usura visibili', color: 'bg-amber-950/80 text-amber-300 border-amber-800/60' },
-  { value: 'da_revisionare', label: 'Da Revisionare / Core', description: 'Necessita di ripristino professionale o rigenerazione', color: 'bg-rose-950/80 text-rose-300 border-rose-800/60' },
+  { value: 'ottimo', label: 'Ottimo (Pari al nuovo)', description: 'Nessun difetto visibile, pronto al montaggio', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  { value: 'buono', label: 'Buono (Normale usura)', description: 'Funzionante con leggeri segni di normale utilizzo', color: 'bg-sky-50 text-sky-800 border-sky-200' },
+  { value: 'discreto', label: 'Discreto (Segni evidenti)', description: 'Integrità strutturale garantita, segni d\'usura visibili', color: 'bg-amber-50 text-amber-800 border-amber-200' },
+  { value: 'da_revisionare', label: 'Da Revisionare / Core', description: 'Necessita di ripristino professionale o rigenerazione', color: 'bg-rose-50 text-rose-800 border-rose-200' },
 ];
 
 export const INVENTORY_STATUSES: { value: InventoryStatus; label: string; badgeColor: string }[] = [
-  { value: 'available', label: 'Disponibile Online', badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-800' },
-  { value: 'reserved', label: 'Riservato', badgeColor: 'bg-amber-950 text-amber-300 border-amber-800' },
-  { value: 'sold', label: 'Venduto', badgeColor: 'bg-slate-800 text-slate-400 border-slate-700' },
-  { value: 'inactive', label: 'Bozza Offline', badgeColor: 'bg-slate-900 text-slate-500 border-slate-800' },
+  { value: 'available', label: 'Disponibile Online', badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  { value: 'reserved', label: 'Riservato', badgeColor: 'bg-amber-50 text-amber-800 border-amber-200' },
+  { value: 'sold', label: 'Venduto', badgeColor: 'bg-slate-100 text-slate-700 border-slate-200' },
+  { value: 'inactive', label: 'Bozza Offline', badgeColor: 'bg-slate-100 text-slate-600 border-slate-200' },
 ];
 
 export const SIDES_OPTIONS = [

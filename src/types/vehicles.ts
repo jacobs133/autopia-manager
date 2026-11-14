@@ -39,11 +39,11 @@ export interface CatalogCacheStats {
 }
 
 export const VEHICLE_STATUS_OPTIONS: { value: string; label: string; color: string }[] = [
-  { value: 'in_attesa', label: 'In attesa di bonifica', color: 'bg-amber-950/70 text-amber-300 border-amber-800/60' },
-  { value: 'bonificato', label: 'Bonificato / Sicuro', color: 'bg-blue-950/70 text-blue-300 border-blue-800/60' },
-  { value: 'in_smontaggio', label: 'In smontaggio ricambi', color: 'bg-purple-950/70 text-purple-300 border-purple-800/60' },
-  { value: 'completato', label: 'Smontaggio completato', color: 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' },
-  { value: 'demolito', label: 'Carcassa rottamata/pressata', color: 'bg-slate-800 text-slate-300 border-slate-700' },
+  { value: 'in_attesa', label: 'In attesa di bonifica', color: 'bg-amber-50 text-amber-800 border-amber-200' },
+  { value: 'bonificato', label: 'Bonificato / Sicuro', color: 'bg-sky-50 text-sky-800 border-sky-200' },
+  { value: 'in_smontaggio', label: 'In smontaggio ricambi', color: 'bg-teal-50 text-teal-800 border-teal-200' },
+  { value: 'completato', label: 'Smontaggio completato', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  { value: 'demolito', label: 'Carcassa rottamata/pressata', color: 'bg-slate-100 text-slate-700 border-slate-200' },
 ];
 
 export const FUEL_TYPE_OPTIONS = [

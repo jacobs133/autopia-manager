@@ -8,20 +8,12 @@ import {
   Package,
   Search,
   RefreshCw,
-  AlertCircle,
   User,
   Phone,
   MapPin,
-  Calendar,
-  DollarSign,
-  Tag,
-  ExternalLink,
-  ChevronRight,
-  Hash,
-  Send,
-  Loader2,
   Globe,
   Filter,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -35,6 +27,16 @@ import {
 } from '../../services/ordersService';
 import { fetchLocalEbayOrders } from '../../services/ebayService';
 import type { EbayOrder, EbayOrderLineItem } from '../../types/ebay';
+import {
+  uiClasses,
+  Button,
+  KpiCard,
+  StatusBadge,
+  AlertBanner,
+  LoadingState,
+  EmptyState,
+  type BadgeTone,
+} from '../ui/DesignSystem';
 
 type OrderTab = 'all' | 'requests' | 'orders' | 'ebay';
 
@@ -55,14 +57,12 @@ export const OrdersManager: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  // Modal / Form di conferma e rifiuto
   const [confirmingReq, setConfirmingReq] = useState<EnrichedPurchaseRequest | null>(null);
   const [rejectingReq, setRejectingReq] = useState<EnrichedPurchaseRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('Pezzo non più disponibile a magazzino');
   const [rejectNote, setRejectNote] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
-  // Form di Spedizione per ordini Autopia Shop
   const [fulfillingOrder, setFulfillingOrder] = useState<EnrichedOrder | null>(null);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [carrier, setCarrier] = useState('BRT Corriere Espresso');
@@ -106,7 +106,6 @@ export const OrdersManager: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Gestione conferma richiesta
   const handleConfirmRequest = async () => {
     if (!sellerId || !confirmingReq || !confirmingReq.inventory_id) return;
     setIsSubmittingAction(true);
@@ -117,7 +116,9 @@ export const OrdersManager: React.FC = () => {
     setIsSubmittingAction(false);
 
     if (res.success) {
-      setActionNotice(`Richiesta #${confirmingReq.id.slice(0, 8)} confermata con successo! Il ricambio è stato riservato.`);
+      setActionNotice(
+        `Richiesta #${confirmingReq.id.slice(0, 8)} confermata con successo! Il ricambio è stato riservato.`
+      );
       setConfirmingReq(null);
       loadData();
     } else {
@@ -125,7 +126,6 @@ export const OrdersManager: React.FC = () => {
     }
   };
 
-  // Gestione rifiuto richiesta
   const handleRejectRequest = async () => {
     if (!sellerId || !rejectingReq) return;
     setIsSubmittingAction(true);
@@ -144,7 +144,6 @@ export const OrdersManager: React.FC = () => {
     }
   };
 
-  // Gestione spedizione ordine Autopia Shop
   const handleFulfillOrder = async () => {
     if (!sellerId || !fulfillingOrder) return;
     setIsSubmittingAction(true);
@@ -161,7 +160,9 @@ export const OrdersManager: React.FC = () => {
     setIsSubmittingAction(false);
 
     if (res.success) {
-      setActionNotice(`Ordine #${fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)} contrassegnato come Spedito!`);
+      setActionNotice(
+        `Ordine #${fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)} contrassegnato come Spedito!`
+      );
       setFulfillingOrder(null);
       setTrackingNumber('');
       loadData();
@@ -170,22 +171,28 @@ export const OrdersManager: React.FC = () => {
     }
   };
 
-  // Statistiche conteggi
-  const pendingRequestsCount = useMemo(() => {
-    return requests.filter((r) => r.status === 'pending_seller_confirmation').length;
-  }, [requests]);
+  const pendingRequestsCount = useMemo(
+    () => requests.filter((r) => r.status === 'pending_seller_confirmation').length,
+    [requests]
+  );
 
-  const paidOrdersToShipCount = useMemo(() => {
-    return orders.filter(
-      (o) => o.payment_status === 'paid' && o.fulfillment_status !== 'shipped' && o.fulfillment_status !== 'delivered' && o.fulfillment_status !== 'completed'
-    ).length;
-  }, [orders]);
+  const paidOrdersToShipCount = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.payment_status === 'paid' &&
+          o.fulfillment_status !== 'shipped' &&
+          o.fulfillment_status !== 'delivered' &&
+          o.fulfillment_status !== 'completed'
+      ).length,
+    [orders]
+  );
 
-  const ebayOrdersToShipCount = useMemo(() => {
-    return ebayOrders.filter((o) => o.order_status !== 'SHIPPED').length;
-  }, [ebayOrders]);
+  const ebayOrdersToShipCount = useMemo(
+    () => ebayOrders.filter((o) => o.order_status !== 'SHIPPED').length,
+    [ebayOrders]
+  );
 
-  // Filtro e ricerca elementi combinati
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
@@ -196,7 +203,13 @@ export const OrdersManager: React.FC = () => {
       const buyer = r.buyer_profile?.full_name?.toLowerCase() || '';
       const phone = r.buyer_profile?.phone?.toLowerCase() || '';
       const id = r.id.toLowerCase();
-      return title.includes(term) || oem.includes(term) || buyer.includes(term) || phone.includes(term) || id.includes(term);
+      return (
+        title.includes(term) ||
+        oem.includes(term) ||
+        buyer.includes(term) ||
+        phone.includes(term) ||
+        id.includes(term)
+      );
     });
   }, [requests, statusFilter, search]);
 
@@ -227,189 +240,182 @@ export const OrdersManager: React.FC = () => {
     });
   }, [ebayOrders, statusFilter, search]);
 
+  const totalAllCount = requests.length + orders.length + ebayOrders.length;
+
+  const getRequestBadge = (status: string): { label: string; tone: BadgeTone } => {
+    switch (status) {
+      case 'pending_seller_confirmation':
+        return { label: 'In attesa conferma', tone: 'warning' };
+      case 'confirmed':
+        return { label: 'Confermata (Riservata)', tone: 'success' };
+      case 'paid':
+        return { label: 'Pagata', tone: 'success' };
+      case 'rejected':
+        return { label: 'Rifiutata', tone: 'danger' };
+      case 'expired':
+        return { label: 'Scaduta', tone: 'neutral' };
+      case 'cancelled':
+        return { label: 'Annullata', tone: 'danger' };
+      default:
+        return { label: status, tone: 'neutral' };
+    }
+  };
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans text-slate-100">
-      {/* 1. Barra Superiore con Statistiche e Filtri */}
-      <div className="p-6 border-b border-slate-800 bg-slate-900/60 space-y-4 shrink-0">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322]">
+      {/* Header & KPI */}
+      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                Vendite & Ordini
-              </span>
-              <span className="text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
+              <span className="font-semibold text-[#074E44]">
                 {currentSeller?.business_name || 'Autodemolitore'}
               </span>
+              <span>•</span>
+              <span>Vendite & Ordini</span>
             </div>
-            <h1 className="text-xl font-bold text-slate-100 mt-1 flex items-center space-x-2">
-              <ShoppingBag className="w-5 h-5 text-amber-400" />
+            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-[#074E44]" />
               <span>Gestione Ordini e Richieste di Acquisto</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Visualizza i ricambi venduti, le richieste ricevute dai clienti su Autopia Shop e gli ordini sincronizzati da eBay.
+            <p className="text-xs text-[#5C6B68] mt-0.5">
+              Monitora i ricambi venduti, le richieste da Autopia Shop e gli ordini sincronizzati da eBay.
             </p>
           </div>
 
-          <div className="flex items-center space-x-2.5">
-            <button
-              type="button"
-              onClick={loadData}
-              disabled={isLoading}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
-              <span>Aggiorna Dati</span>
-            </button>
-          </div>
+          <Button variant="secondary" size="sm" onClick={loadData} disabled={isLoading}>
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
+            <span>Aggiorna Dati</span>
+          </Button>
         </div>
 
-        {/* Notifiche ed Errori */}
         {actionNotice && (
-          <div className="p-3 bg-emerald-950/60 border border-emerald-800/80 rounded-lg text-xs text-emerald-200 flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{actionNotice}</span>
-          </div>
+          <AlertBanner tone="success" onDismiss={() => setActionNotice(null)}>
+            {actionNotice}
+          </AlertBanner>
         )}
         {actionError && (
-          <div className="p-3 bg-red-950/60 border border-red-800/80 rounded-lg text-xs text-red-200 flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>{actionError}</span>
-          </div>
+          <AlertBanner tone="danger" onDismiss={() => setActionError(null)}>
+            {actionError}
+          </AlertBanner>
         )}
 
         {/* Schede KPI */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-amber-400 flex items-center space-x-1">
-              <Clock className="w-3 h-3" />
-              <span>Richieste da Confermare</span>
-            </div>
-            <div className="text-xl font-bold text-slate-100 mt-1">
-              {pendingRequestsCount}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-emerald-400 flex items-center space-x-1">
-              <ShoppingBag className="w-3 h-3" />
-              <span>Ordini Shop da Spedire</span>
-            </div>
-            <div className="text-xl font-bold text-emerald-400 mt-1">
-              {paidOrdersToShipCount}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-blue-400 flex items-center space-x-1">
-              <Globe className="w-3 h-3" />
-              <span>Ordini eBay da Spedire</span>
-            </div>
-            <div className="text-xl font-bold text-blue-400 mt-1">
-              {ebayOrdersToShipCount}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-3">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 flex items-center space-x-1">
-              <CheckCircle2 className="w-3 h-3 text-slate-400" />
-              <span>Totale Transazioni</span>
-            </div>
-            <div className="text-xl font-bold text-slate-100 mt-1">
-              {requests.length + orders.length + ebayOrders.length}
-            </div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="Richieste da confermare"
+            value={pendingRequestsCount}
+            icon={<Clock className="w-4 h-4" />}
+            accent={pendingRequestsCount > 0 ? 'warning' : 'default'}
+          />
+          <KpiCard
+            label="Ordini Shop da spedire"
+            value={paidOrdersToShipCount}
+            icon={<ShoppingBag className="w-4 h-4" />}
+            accent="brand"
+          />
+          <KpiCard
+            label="Ordini eBay da spedire"
+            value={ebayOrdersToShipCount}
+            icon={<Globe className="w-4 h-4" />}
+          />
+          <KpiCard
+            label="Totale transazioni"
+            value={totalAllCount}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+            accent="success"
+          />
         </div>
 
-        {/* Tab di Navigazione Sezioni */}
-        <div className="flex border-b border-slate-800 space-x-1 pt-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('all')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors flex items-center space-x-1.5 cursor-pointer ${
-              activeTab === 'all'
-                ? 'bg-slate-950 text-amber-400 border-t border-x border-slate-800'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            <span>Tutti gli Ordini</span>
-            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-              {requests.length + orders.length + ebayOrders.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('requests')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors flex items-center space-x-1.5 cursor-pointer ${
-              activeTab === 'requests'
-                ? 'bg-slate-950 text-amber-400 border-t border-x border-slate-800'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Richieste di Acquisto (Shop)</span>
-            {pendingRequestsCount > 0 && (
-              <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-bold">
-                {pendingRequestsCount}
+        {/* Segment Tab Bar + Filtri */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
+          <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EEF2F1] border border-[#DCE5E3]">
+            <button
+              type="button"
+              onClick={() => setActiveTab('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'all'
+                  ? 'bg-white text-[#074E44] shadow-xs'
+                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Tutti</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EAF3F1] text-[#074E44] tabular-nums">
+                {totalAllCount}
               </span>
-            )}
-          </button>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors flex items-center space-x-1.5 cursor-pointer ${
-              activeTab === 'orders'
-                ? 'bg-slate-950 text-amber-400 border-t border-x border-slate-800'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Ordini Autopia Shop</span>
-            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-              {orders.length}
-            </span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('requests')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'requests'
+                  ? 'bg-white text-[#074E44] shadow-xs'
+                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Richieste Shop</span>
+              {pendingRequestsCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold tabular-nums">
+                  {pendingRequestsCount}
+                </span>
+              )}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('ebay')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors flex items-center space-x-1.5 cursor-pointer ${
-              activeTab === 'ebay'
-                ? 'bg-slate-950 text-amber-400 border-t border-x border-slate-800'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
-            <span>Ordini Canale eBay</span>
-            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-              {ebayOrders.length}
-            </span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'orders'
+                  ? 'bg-white text-[#074E44] shadow-xs'
+                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Ordini Shop</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EDF2F1] text-[#5C6B68] tabular-nums">
+                {orders.length}
+              </span>
+            </button>
 
-        {/* Barra di Ricerca e Filtro Stato */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-          <div className="relative md:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cerca per ricambio, codice OEM, nome cliente, ID transazione..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-            />
+            <button
+              type="button"
+              onClick={() => setActiveTab('ebay')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'ebay'
+                  ? 'bg-white text-[#074E44] shadow-xs'
+                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Ordini eBay</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EDF2F1] text-[#5C6B68] tabular-nums">
+                {ebayOrders.length}
+              </span>
+            </button>
           </div>
 
-          <div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1 lg:max-w-xl">
+            <div className="relative sm:col-span-2">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8A9895]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cerca ricambio, OEM, cliente, ID..."
+                className={`${uiClasses.input} pl-8`}
+              />
+            </div>
+
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+              className={uiClasses.select}
             >
               <option value="all">Tutti gli stati</option>
-              <option value="pending_seller_confirmation">In attesa di conferma demolitore</option>
+              <option value="pending_seller_confirmation">In attesa conferma</option>
               <option value="confirmed">Confermate / Riservate</option>
               <option value="paid">Pagate / Da Spedire</option>
               <option value="shipped">Spedite</option>
@@ -420,375 +426,450 @@ export const OrdersManager: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Contenuto Principale: Elenco Ordini e Richieste */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {isLoading && (
-          <div className="p-12 text-center text-xs text-slate-400 flex flex-col items-center justify-center space-y-2">
-            <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
-            <span>Caricamento ordini e richieste dal database in corso...</span>
-          </div>
-        )}
+      {/* Contenuto Principale */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {isLoading ? (
+          <LoadingState message="Caricamento ordini e richieste dal database in corso..." />
+        ) : totalAllCount === 0 ? (
+          <EmptyState
+            icon={<ShoppingBag className="w-6 h-6" />}
+            title="Nessun ordine o richiesta ricevuta"
+            description="Quando un cliente effettua un acquisto su Autopia Shop o su eBay, i dettagli del ricambio, dell'acquirente e l'indirizzo di consegna compariranno qui."
+          />
+        ) : (
+          <>
+            {/* 1. RICHIESTE DI ACQUISTO */}
+            {(activeTab === 'all' || activeTab === 'requests') && filteredRequests.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#074E44] flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    <span>Richieste di Acquisto Autopia Shop ({filteredRequests.length})</span>
+                  </h2>
+                  <span className="text-[11px] text-[#5C6B68]">
+                    Verifica la disponibilità del ricambio per confermare la vendita
+                  </span>
+                </div>
 
-        {!isLoading && requests.length === 0 && orders.length === 0 && ebayOrders.length === 0 && (
-          <div className="p-12 text-center bg-slate-900/40 rounded-xl border border-slate-800 space-y-3">
-            <ShoppingBag className="w-10 h-10 mx-auto text-slate-600" />
-            <div className="text-sm font-bold text-slate-200">
-              Nessun ordine o richiesta di acquisto ricevuta
-            </div>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Quando un cliente effettua un acquisto su <strong>Autopia Shop</strong> o sul canale <strong>eBay</strong>, i dettagli del pezzo venduto, i dati dell'acquirente e l'indirizzo di consegna compariranno immediatamente qui.
-            </p>
-          </div>
-        )}
+                <div className="space-y-3">
+                  {filteredRequests.map((req) => {
+                    const isPending = req.status === 'pending_seller_confirmation';
+                    const badge = getRequestBadge(req.status);
 
-        {/* 1. SEZIONE RICHIESTE DI ACQUISTO (Fase di approvazione) */}
-        {(activeTab === 'all' || activeTab === 'requests') && filteredRequests.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-1.5">
-                <Clock className="w-4 h-4" />
-                <span>Richieste di Acquisto da Autopia Shop ({filteredRequests.length})</span>
-              </h2>
-              <span className="text-[11px] text-slate-400">
-                Verifica disponibilità ricambio per confermare la vendita
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {filteredRequests.map((req) => {
-                const isPending = req.status === 'pending_seller_confirmation';
-                const isConfirmed = req.status === 'confirmed' || req.status === 'paid';
-                const isRejected = req.status === 'rejected' || req.status === 'cancelled';
-
-                return (
-                  <div
-                    key={req.id}
-                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="font-mono text-xs font-bold text-amber-400">
-                          Richiesta #{req.id.slice(0, 8)}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                            isPending
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                              : isConfirmed
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                          }`}
-                        >
-                          {req.status === 'pending_seller_confirmation' && 'In Attesa di Tua Conferma'}
-                          {req.status === 'confirmed' && 'Confermata (Riservata)'}
-                          {req.status === 'paid' && 'Pagata'}
-                          {req.status === 'rejected' && 'Rifiutata'}
-                          {req.status === 'expired' && 'Scaduta'}
-                          {req.status === 'cancelled' && 'Annullata'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          Modalità: <strong className="text-slate-200">{req.delivery_method === 'pickup' ? 'Ritiro al banco' : 'Spedizione corriere'}</strong>
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-slate-400 flex items-center space-x-3">
-                        <span>Data: <strong className="text-slate-200">{new Date(req.created_at).toLocaleString('it-IT')}</strong></span>
-                        <span className="text-amber-400 font-mono font-bold text-sm">
-                          €{Number(req.price_at_request).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      {/* Dettagli Ricambio */}
-                      <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
-                        <div className="text-[11px] font-bold text-slate-300 flex items-center space-x-1.5">
-                          <Package className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{req.inventory?.title || 'Ricambio non specificato'}</span>
-                        </div>
-                        <div className="text-slate-400 space-y-0.5 text-[11px]">
-                          {req.inventory?.oem_code && (
-                            <div>Codice OEM: <strong className="text-slate-200 font-mono">{req.inventory.oem_code}</strong></div>
-                          )}
-                          {req.inventory?.position_note && (
-                            <div>Scaffale/Ubicazione: <strong className="text-amber-300">{req.inventory.position_note}</strong></div>
-                          )}
-                          {req.inventory?.seller_vehicles && (
-                            <div>
-                              Veicolo: {req.inventory.seller_vehicles.make} {req.inventory.seller_vehicles.model} {req.inventory.seller_vehicles.version || ''} {req.inventory.seller_vehicles.plate ? `(Targa: ${req.inventory.seller_vehicles.plate})` : ''}
-                            </div>
-                          )}
-                          <div>Quantità richiesta: <strong className="text-slate-200">{req.quantity} pezzo/i</strong></div>
-                        </div>
-                      </div>
-
-                      {/* Dettagli Acquirente */}
-                      <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
-                        <div className="text-[11px] font-bold text-slate-300 flex items-center space-x-1.5">
-                          <User className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Acquirente Autopia Shop</span>
-                        </div>
-                        <div className="text-slate-400 space-y-0.5 text-[11px]">
-                          <div>Nome: <strong className="text-slate-200">{req.buyer_profile?.full_name || 'Cliente Autopia'}</strong></div>
-                          {req.buyer_profile?.phone && (
-                            <div className="flex items-center space-x-1">
-                              <Phone className="w-3 h-3 text-slate-500" />
-                              <span className="font-mono text-slate-200">{req.buyer_profile.phone}</span>
-                            </div>
-                          )}
-                          {req.buyer_profile?.city && (
-                            <div className="flex items-center space-x-1">
-                              <MapPin className="w-3 h-3 text-slate-500" />
-                              <span>{req.buyer_profile.city}</span>
-                            </div>
-                          )}
-                          {req.buyer_note && (
-                            <div className="mt-1 p-1.5 bg-slate-900 rounded border border-slate-800 text-amber-200/90 italic">
-                              "{req.buyer_note}"
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Azioni del Demolitore se in attesa */}
-                    {isPending && (
-                      <div className="flex items-center justify-end space-x-2 pt-1 border-t border-slate-800/60">
-                        <button
-                          type="button"
-                          onClick={() => setRejectingReq(req)}
-                          className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900/60 text-red-300 border border-red-800/60 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Rifiuta Richiesta</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmingReq(req)}
-                          className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Conferma e Riserva Pezzo</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 2. SEZIONE ORDINI DEFINITIVI AUTOPIA SHOP */}
-        {(activeTab === 'all' || activeTab === 'orders') && filteredOrders.length > 0 && (
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between pb-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center space-x-1.5">
-                <ShoppingBag className="w-4 h-4" />
-                <span>Ordini Conclusi & Spedizioni Autopia Shop ({filteredOrders.length})</span>
-              </h2>
-              <span className="text-[11px] text-slate-400">
-                Ordini pagati online con pagamento protetto
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {filteredOrders.map((ord) => {
-                const isShipped = ord.fulfillment_status === 'shipped' || ord.fulfillment_status === 'delivered' || ord.fulfillment_status === 'completed';
-
-                return (
-                  <div
-                    key={ord.id}
-                    className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="font-mono text-xs font-bold text-emerald-400">
-                          Ordine #{ord.order_number || ord.id.slice(0, 8)}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                            isShipped
-                              ? 'bg-purple-950 text-purple-300 border-purple-800'
-                              : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                          }`}
-                        >
-                          {isShipped ? 'Spedito / Consegnato' : 'Pagato • Da Spedire'}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          Canale: <strong className="text-slate-200 capitalize">{ord.sale_channel || 'Autopia Shop'}</strong>
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-slate-400 flex items-center space-x-3">
-                        <span>Data: <strong className="text-slate-200">{new Date(ord.created_at).toLocaleString('it-IT')}</strong></span>
-                        <span className="text-emerald-400 font-mono font-bold text-sm">
-                          Totale: €{Number(ord.total).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      {/* Dettagli Ricambio */}
-                      <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
-                        <div className="text-[11px] font-bold text-slate-300 flex items-center space-x-1.5">
-                          <Package className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{ord.inventory?.title || 'Ricambio non specificato'}</span>
-                        </div>
-                        <div className="text-slate-400 space-y-0.5 text-[11px]">
-                          {ord.inventory?.oem_code && (
-                            <div>Codice OEM: <strong className="text-slate-200 font-mono">{ord.inventory.oem_code}</strong></div>
-                          )}
-                          {ord.inventory?.position_note && (
-                            <div>Scaffale: <strong className="text-amber-300">{ord.inventory.position_note}</strong></div>
-                          )}
-                          <div>Quantità: <strong className="text-slate-200">{ord.quantity} pz</strong> • Incasso netto venditore: <strong className="text-emerald-300">€{Number(ord.seller_amount).toFixed(2)}</strong></div>
-                        </div>
-                      </div>
-
-                      {/* Destinazione e Spedizione */}
-                      <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1.5">
-                        <div className="text-[11px] font-bold text-slate-300 flex items-center space-x-1.5">
-                          <Truck className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Indirizzo di Consegna / Ritiro</span>
-                        </div>
-                        <div className="text-slate-400 space-y-0.5 text-[11px]">
-                          <div>Destinatario: <strong className="text-slate-200">{ord.buyer_profile?.full_name || 'Cliente'}</strong></div>
-                          {ord.shipping_address ? (
-                            <div>Indirizzo: <span className="text-slate-200 font-medium">{ord.shipping_address}</span></div>
-                          ) : (
-                            <div>Metodo: <strong className="text-amber-300">{ord.delivery_method === 'pickup' ? 'Ritiro diretto al banco' : 'Spedizione standard'}</strong></div>
-                          )}
-                          {ord.tracking_number && (
-                            <div className="mt-1 p-1 bg-slate-900 rounded font-mono text-[11px] text-purple-300 border border-purple-800/50">
-                              Tracking ({ord.carrier || 'Corriere'}): {ord.tracking_number}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Azione di Spedizione per ordini non ancora evasi */}
-                    {!isShipped && ord.delivery_method !== 'pickup' && (
-                      <div className="flex items-center justify-end space-x-2 pt-1 border-t border-slate-800/60">
-                        <button
-                          type="button"
-                          onClick={() => setFulfillingOrder(ord)}
-                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                          <span>Inserisci Tracking e Spedisci</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 3. SEZIONE ORDINI EBAY */}
-        {(activeTab === 'all' || activeTab === 'ebay') && filteredEbayOrders.length > 0 && (
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between pb-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center space-x-1.5">
-                <Globe className="w-4 h-4" />
-                <span>Ordini Sincronizzati da eBay ({filteredEbayOrders.length})</span>
-              </h2>
-              <span className="text-[11px] text-slate-400">
-                Canale Sandbox / Marketplace esterno
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {filteredEbayOrders.map((eo) => (
-                <div
-                  key={eo.id}
-                  className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 border-b border-slate-800">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-mono text-xs font-bold text-amber-400">
-                        eBay #{eo.ebay_order_id}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                          eo.order_status === 'SHIPPED'
-                            ? 'bg-purple-950 text-purple-300 border-purple-800'
-                            : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                        }`}
+                    return (
+                      <div
+                        key={req.id}
+                        className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
                       >
-                        {eo.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato • Da Spedire'}
-                      </span>
-                    </div>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#EEF2F1]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-[#074E44] tabular-nums">
+                              Richiesta #{req.id.slice(0, 8)}
+                            </span>
+                            <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+                            <span className="text-[11px] text-[#5C6B68]">
+                              Modalità:{' '}
+                              <strong className="text-[#1A2322]">
+                                {req.delivery_method === 'pickup'
+                                  ? 'Ritiro al banco'
+                                  : 'Spedizione corriere'}
+                              </strong>
+                            </span>
+                          </div>
 
-                    <div className="text-xs text-slate-400 flex items-center space-x-3">
-                      <span>Data: <strong className="text-slate-200">{new Date(eo.creation_date).toLocaleDateString('it-IT')}</strong></span>
-                      <span className="text-emerald-400 font-mono font-bold text-sm">
-                        €{eo.total_price.toFixed(2)} {eo.currency}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1">
-                      <div className="text-[11px] font-bold text-slate-300">Articoli Venduti su eBay:</div>
-                      {(eo.line_items || []).map((li: EbayOrderLineItem, idx: number) => (
-                        <div key={idx} className="text-slate-300 text-[11px]">
-                          • <strong className="text-slate-100">{li.title}</strong> (Qtà: {li.quantity}) {li.lineItemCost ? `- €${li.lineItemCost}` : ''}
+                          <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                            <span>
+                              Data:{' '}
+                              <strong className="text-[#1A2322]">
+                                {new Date(req.created_at).toLocaleString('it-IT')}
+                              </strong>
+                            </span>
+                            <span className="text-[#074E44] font-mono font-bold text-sm">
+                              € {Number(req.price_at_request).toFixed(2)}
+                            </span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-1">
-                      <div className="text-[11px] font-bold text-slate-300">Destinatario eBay:</div>
-                      <div className="text-slate-400 text-[11px]">
-                        <div>Utente: <strong className="text-slate-200">@{eo.buyer_username}</strong> {eo.buyer_name ? `(${eo.buyer_name})` : ''}</div>
-                        {eo.shipping_address && (
-                          <div className="truncate">Indirizzo: {eo.shipping_address.addressLine1 || ''}, {eo.shipping_address.city || ''}</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                              <Package className="w-3.5 h-3.5 text-[#074E44]" />
+                              <span>{req.inventory?.title || 'Ricambio non specificato'}</span>
+                            </div>
+                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                              {req.inventory?.oem_code && (
+                                <div>
+                                  Codice OEM:{' '}
+                                  <strong className="text-[#1A2322] font-mono">
+                                    {req.inventory.oem_code}
+                                  </strong>
+                                </div>
+                              )}
+                              {req.inventory?.position_note && (
+                                <div>
+                                  Scaffale:{' '}
+                                  <strong className="text-[#074E44]">
+                                    {req.inventory.position_note}
+                                  </strong>
+                                </div>
+                              )}
+                              {req.inventory?.seller_vehicles && (
+                                <div>
+                                  Veicolo: {req.inventory.seller_vehicles.make}{' '}
+                                  {req.inventory.seller_vehicles.model}{' '}
+                                  {req.inventory.seller_vehicles.version || ''}{' '}
+                                  {req.inventory.seller_vehicles.plate
+                                    ? `(Targa: ${req.inventory.seller_vehicles.plate})`
+                                    : ''}
+                                </div>
+                              )}
+                              <div className="tabular-nums">
+                                Quantità richiesta:{' '}
+                                <strong className="text-[#1A2322]">{req.quantity} pz</strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                              <User className="w-3.5 h-3.5 text-[#074E44]" />
+                              <span>Acquirente Autopia Shop</span>
+                            </div>
+                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                              <div>
+                                Nome:{' '}
+                                <strong className="text-[#1A2322]">
+                                  {req.buyer_profile?.full_name || 'Cliente Autopia'}
+                                </strong>
+                              </div>
+                              {req.buyer_profile?.phone && (
+                                <div className="flex items-center gap-1">
+                                  <Phone className="w-3 h-3 text-[#8A9895]" />
+                                  <span className="font-mono text-[#1A2322]">
+                                    {req.buyer_profile.phone}
+                                  </span>
+                                </div>
+                              )}
+                              {req.buyer_profile?.city && (
+                                <div className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-[#8A9895]" />
+                                  <span>{req.buyer_profile.city}</span>
+                                </div>
+                              )}
+                              {req.buyer_note && (
+                                <div className="mt-1 p-2 bg-white rounded-md border border-[#E2E8E7] text-[#2E3C3A] italic">
+                                  "{req.buyer_note}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isPending && (
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
+                            <Button
+                              variant="secondary"
+                              size="xs"
+                              onClick={() => setRejectingReq(req)}
+                              className="text-red-700 border-red-200 hover:bg-red-50"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Rifiuta Richiesta</span>
+                            </Button>
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              onClick={() => setConfirmingReq(req)}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Conferma e Riserva Pezzo</span>
+                            </Button>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            )}
+
+            {/* 2. ORDINI AUTOPIA SHOP */}
+            {(activeTab === 'all' || activeTab === 'orders') && filteredOrders.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#074E44] flex items-center gap-1.5">
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Ordini Conclusi & Spedizioni Autopia Shop ({filteredOrders.length})</span>
+                  </h2>
+                  <span className="text-[11px] text-[#5C6B68]">
+                    Ordini pagati online con pagamento protetto
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {filteredOrders.map((ord) => {
+                    const isShipped =
+                      ord.fulfillment_status === 'shipped' ||
+                      ord.fulfillment_status === 'delivered' ||
+                      ord.fulfillment_status === 'completed';
+
+                    return (
+                      <div
+                        key={ord.id}
+                        className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#EEF2F1]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-[#074E44] tabular-nums">
+                              Ordine #{ord.order_number || ord.id.slice(0, 8)}
+                            </span>
+                            <StatusBadge tone={isShipped ? 'brand' : 'success'}>
+                              {isShipped ? 'Spedito / Consegnato' : 'Pagato • Da Spedire'}
+                            </StatusBadge>
+                            <span className="text-[11px] text-[#5C6B68]">
+                              Canale:{' '}
+                              <strong className="text-[#1A2322] capitalize">
+                                {ord.sale_channel || 'Autopia Shop'}
+                              </strong>
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                            <span>
+                              Data:{' '}
+                              <strong className="text-[#1A2322]">
+                                {new Date(ord.created_at).toLocaleString('it-IT')}
+                              </strong>
+                            </span>
+                            <span className="text-[#074E44] font-mono font-bold text-sm">
+                              Totale: € {Number(ord.total).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                              <Package className="w-3.5 h-3.5 text-[#074E44]" />
+                              <span>{ord.inventory?.title || 'Ricambio non specificato'}</span>
+                            </div>
+                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                              {ord.inventory?.oem_code && (
+                                <div>
+                                  Codice OEM:{' '}
+                                  <strong className="text-[#1A2322] font-mono">
+                                    {ord.inventory.oem_code}
+                                  </strong>
+                                </div>
+                              )}
+                              {ord.inventory?.position_note && (
+                                <div>
+                                  Scaffale:{' '}
+                                  <strong className="text-[#074E44]">
+                                    {ord.inventory.position_note}
+                                  </strong>
+                                </div>
+                              )}
+                              <div className="tabular-nums">
+                                Quantità: <strong className="text-[#1A2322]">{ord.quantity} pz</strong> •
+                                Netto venditore:{' '}
+                                <strong className="text-emerald-700">
+                                  € {Number(ord.seller_amount).toFixed(2)}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5 text-[#074E44]" />
+                              <span>Indirizzo di Consegna / Ritiro</span>
+                            </div>
+                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                              <div>
+                                Destinatario:{' '}
+                                <strong className="text-[#1A2322]">
+                                  {ord.buyer_profile?.full_name || 'Cliente'}
+                                </strong>
+                              </div>
+                              {ord.shipping_address ? (
+                                <div>
+                                  Indirizzo:{' '}
+                                  <span className="text-[#1A2322] font-medium">
+                                    {ord.shipping_address}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>
+                                  Metodo:{' '}
+                                  <strong className="text-[#074E44]">
+                                    {ord.delivery_method === 'pickup'
+                                      ? 'Ritiro diretto al banco'
+                                      : 'Spedizione standard'}
+                                  </strong>
+                                </div>
+                              )}
+                              {ord.tracking_number && (
+                                <div className="mt-1 p-1.5 bg-white rounded-md font-mono text-[11px] text-[#074E44] border border-[#C6DFDA]">
+                                  Tracking ({ord.carrier || 'Corriere'}): {ord.tracking_number}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {!isShipped && ord.delivery_method !== 'pickup' && (
+                          <div className="flex items-center justify-end pt-2 border-t border-[#EEF2F1]">
+                            <Button
+                              variant="primary"
+                              size="xs"
+                              onClick={() => setFulfillingOrder(ord)}
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                              <span>Inserisci Tracking e Spedisci</span>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 3. ORDINI EBAY */}
+            {(activeTab === 'all' || activeTab === 'ebay') && filteredEbayOrders.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-[#074E44] flex items-center gap-1.5">
+                    <Globe className="w-4 h-4" />
+                    <span>Ordini Sincronizzati da eBay ({filteredEbayOrders.length})</span>
+                  </h2>
+                  <span className="text-[11px] text-[#5C6B68]">Canale eBay Sandbox</span>
+                </div>
+
+                <div className="space-y-3">
+                  {filteredEbayOrders.map((eo) => (
+                    <div
+                      key={eo.id}
+                      className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 border-b border-[#EEF2F1]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-[#074E44]">
+                            eBay #{eo.ebay_order_id}
+                          </span>
+                          <StatusBadge tone={eo.order_status === 'SHIPPED' ? 'brand' : 'success'}>
+                            {eo.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato • Da Spedire'}
+                          </StatusBadge>
+                        </div>
+
+                        <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                          <span>
+                            Data:{' '}
+                            <strong className="text-[#1A2322]">
+                              {new Date(eo.creation_date).toLocaleDateString('it-IT')}
+                            </strong>
+                          </span>
+                          <span className="text-[#074E44] font-mono font-bold text-sm">
+                            € {eo.total_price.toFixed(2)} {eo.currency}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                          <div className="text-xs font-bold text-[#1A2322]">
+                            Articoli Venduti su eBay
+                          </div>
+                          {(eo.line_items || []).map((li: EbayOrderLineItem, idx: number) => (
+                            <div key={idx} className="text-[#3F4E4B] text-[11px] tabular-nums">
+                              • <strong className="text-[#1A2322]">{li.title}</strong> (Qtà:{' '}
+                              {li.quantity}) {li.lineItemCost ? `- € ${li.lineItemCost}` : ''}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
+                          <div className="text-xs font-bold text-[#1A2322]">Destinatario eBay</div>
+                          <div className="text-[#5C6B68] text-[11px]">
+                            <div>
+                              Utente: <strong className="text-[#1A2322]">@{eo.buyer_username}</strong>{' '}
+                              {eo.buyer_name ? `(${eo.buyer_name})` : ''}
+                            </div>
+                            {eo.shipping_address && (
+                              <div className="truncate">
+                                Indirizzo: {eo.shipping_address.addressLine1 || ''},{' '}
+                                {eo.shipping_address.city || ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Nessun risultato coi filtri attuali */}
+            {(activeTab === 'requests' && filteredRequests.length === 0) ||
+            (activeTab === 'orders' && filteredOrders.length === 0) ||
+            (activeTab === 'ebay' && filteredEbayOrders.length === 0) ||
+            (activeTab === 'all' &&
+              filteredRequests.length === 0 &&
+              filteredOrders.length === 0 &&
+              filteredEbayOrders.length === 0) ? (
+              <EmptyState
+                icon={<Search className="w-6 h-6" />}
+                title="Nessuna transazione corrisponde ai filtri"
+                description="Prova a modificare i criteri di ricerca o lo stato selezionato."
+              />
+            ) : null}
+          </>
         )}
       </div>
 
       {/* MODAL CONFERMA RICHIESTA */}
       {confirmingReq && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center space-x-2 text-emerald-400">
-              <CheckCircle2 className="w-5 h-5" />
-              <h3 className="text-sm font-bold text-slate-100">Conferma Richiesta di Acquisto</h3>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Stai confermando la disponibilità del ricambio{' '}
-              <strong>"{confirmingReq.inventory?.title}"</strong> per il cliente.
-              Lo stato del ricambio a magazzino verrà impostato su <strong>RISERVATO</strong> per evitare vendite duplicate.
-            </p>
-            <div className="flex items-center justify-end space-x-2 pt-2">
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-[#074E44]">
+                <CheckCircle2 className="w-5 h-5" />
+                <h3 className="text-base font-bold text-[#162220]">Conferma Richiesta di Acquisto</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setConfirmingReq(null)}
+                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-[#3F4E4B] leading-relaxed">
+              Stai confermando la disponibilità del ricambio{' '}
+              <strong className="text-[#1A2322]">"{confirmingReq.inventory?.title}"</strong> per il cliente.
+              Lo stato del ricambio a magazzino verrà impostato su{' '}
+              <strong className="text-[#074E44]">RISERVATO</strong> per evitare vendite duplicate.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirmingReq(null)}
                 disabled={isSubmittingAction}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs"
               >
                 Annulla
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleConfirmRequest}
-                disabled={isSubmittingAction}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs flex items-center space-x-1.5"
+                loading={isSubmittingAction}
               >
-                {isSubmittingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Conferma e Riserva</span>
-              </button>
+                Conferma e Riserva
+              </Button>
             </div>
           </div>
         </div>
@@ -796,52 +877,73 @@ export const OrdersManager: React.FC = () => {
 
       {/* MODAL RIFIUTO RICHIESTA */}
       {rejectingReq && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center space-x-2 text-red-400">
-              <XCircle className="w-5 h-5" />
-              <h3 className="text-sm font-bold text-slate-100">Rifiuta Richiesta di Acquisto</h3>
-            </div>
-            <p className="text-xs text-slate-300">
-              Indica il motivo per cui non puoi evadere la richiesta per <strong>"{rejectingReq.inventory?.title}"</strong>:
-            </p>
-            <div className="space-y-2">
-              <select
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200"
-              >
-                <option value="Pezzo non più disponibile a magazzino">Pezzo non più disponibile a magazzino</option>
-                <option value="Danneggiato durante lo smontaggio">Danneggiato durante lo smontaggio</option>
-                <option value="Incompatibile con il modello richiesto">Incompatibile con il modello richiesto</option>
-                <option value="Altro">Altro motivo</option>
-              </select>
-              <textarea
-                value={rejectNote}
-                onChange={(e) => setRejectNote(e.target.value)}
-                placeholder="Nota aggiuntiva per il cliente (opzionale)..."
-                rows={2}
-                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200"
-              />
-            </div>
-            <div className="flex items-center justify-end space-x-2 pt-2">
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-red-700">
+                <XCircle className="w-5 h-5" />
+                <h3 className="text-base font-bold text-[#162220]">Rifiuta Richiesta di Acquisto</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setRejectingReq(null)}
+                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-[#3F4E4B]">
+              Indica il motivo per cui non puoi evadere la richiesta per{' '}
+              <strong className="text-[#1A2322]">"{rejectingReq.inventory?.title}"</strong>:
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={uiClasses.label}>Motivo</label>
+                <select
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  className={uiClasses.select}
+                >
+                  <option value="Pezzo non più disponibile a magazzino">
+                    Pezzo non più disponibile a magazzino
+                  </option>
+                  <option value="Danneggiato durante lo smontaggio">
+                    Danneggiato durante lo smontaggio
+                  </option>
+                  <option value="Incompatibile con il modello richiesto">
+                    Incompatibile con il modello richiesto
+                  </option>
+                  <option value="Altro">Altro motivo</option>
+                </select>
+              </div>
+              <div>
+                <label className={uiClasses.label}>Nota aggiuntiva (opzionale)</label>
+                <textarea
+                  value={rejectNote}
+                  onChange={(e) => setRejectNote(e.target.value)}
+                  placeholder="Nota per il cliente..."
+                  rows={2}
+                  className={uiClasses.textarea}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setRejectingReq(null)}
                 disabled={isSubmittingAction}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs"
               >
                 Annulla
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={handleRejectRequest}
-                disabled={isSubmittingAction}
-                className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded text-xs flex items-center space-x-1.5"
+                loading={isSubmittingAction}
               >
-                {isSubmittingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Conferma Rifiuto</span>
-              </button>
+                Conferma Rifiuto
+              </Button>
             </div>
           </div>
         </div>
@@ -849,22 +951,35 @@ export const OrdersManager: React.FC = () => {
 
       {/* MODAL SPEDIZIONE ORDINE */}
       {fulfillingOrder && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center space-x-2 text-blue-400">
-              <Truck className="w-5 h-5" />
-              <h3 className="text-sm font-bold text-slate-100">Registra Spedizione Ordine</h3>
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-[#074E44]">
+                <Truck className="w-5 h-5" />
+                <h3 className="text-base font-bold text-[#162220]">Registra Spedizione Ordine</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFulfillingOrder(null)}
+                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <p className="text-xs text-slate-300">
-              Inserisci i dettagli di spedizione per l'ordine #{fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)}:
+            <p className="text-xs text-[#3F4E4B]">
+              Inserisci i dettagli di spedizione per l'ordine #
+              <span className="font-mono font-semibold text-[#1A2322]">
+                {fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)}
+              </span>
+              :
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Corriere</label>
+                <label className={uiClasses.label}>Corriere</label>
                 <select
                   value={carrier}
                   onChange={(e) => setCarrier(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200"
+                  className={uiClasses.select}
                 >
                   <option value="BRT Corriere Espresso">BRT Corriere Espresso</option>
                   <option value="GLS Italy">GLS Italy</option>
@@ -875,34 +990,33 @@ export const OrdersManager: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Codice di Tracking (Lettera di Vettura)</label>
+                <label className={uiClasses.label}>Codice di Tracking (Lettera di Vettura)</label>
                 <input
                   type="text"
                   value={trackingNumber}
                   onChange={(e) => setTrackingNumber(e.target.value)}
                   placeholder="Es. BRT123456789IT"
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 font-mono"
+                  className={`${uiClasses.input} font-mono`}
                 />
               </div>
             </div>
-            <div className="flex items-center justify-end space-x-2 pt-2">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setFulfillingOrder(null)}
                 disabled={isSubmittingAction}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs"
               >
                 Annulla
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleFulfillOrder}
-                disabled={isSubmittingAction}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs flex items-center space-x-1.5"
+                loading={isSubmittingAction}
               >
-                {isSubmittingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Salva e Segna come Spedito</span>
-              </button>
+                Salva e Segna come Spedito
+              </Button>
             </div>
           </div>
         </div>
