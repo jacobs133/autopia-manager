@@ -13,9 +13,11 @@ import {
   MapPin,
   Globe,
   Filter,
+  Download,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import {
   fetchSellerPurchaseRequests,
   fetchSellerOrders,
@@ -27,10 +29,12 @@ import {
 } from '../../services/ordersService';
 import { fetchLocalEbayOrders } from '../../services/ebayService';
 import type { EbayOrder, EbayOrderLineItem } from '../../types/ebay';
+import { downloadCsvFile } from '../../utils/csvExport';
 import {
   uiClasses,
   Button,
   KpiCard,
+  SectionHeader,
   StatusBadge,
   AlertBanner,
   LoadingState,
@@ -42,6 +46,7 @@ type OrderTab = 'all' | 'requests' | 'orders' | 'ebay';
 
 export const OrdersManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
+  const { refreshSnapshot } = useDashboard();
   const currentSeller = effectiveSellerProfile || sellerProfile;
   const sellerId = currentSeller?.id;
 
@@ -117,10 +122,11 @@ export const OrdersManager: React.FC = () => {
 
     if (res.success) {
       setActionNotice(
-        `Richiesta #${confirmingReq.id.slice(0, 8)} confermata con successo! Il ricambio è stato riservato.`
+        `Richiesta #${confirmingReq.id.slice(0, 8)} confermata con successo. Il ricambio è ora riservato.`
       );
       setConfirmingReq(null);
       loadData();
+      refreshSnapshot();
     } else {
       setActionError(res.error || 'Impossibile confermare la richiesta.');
     }
@@ -139,6 +145,7 @@ export const OrdersManager: React.FC = () => {
       setActionNotice(`Richiesta #${rejectingReq.id.slice(0, 8)} rifiutata.`);
       setRejectingReq(null);
       loadData();
+      refreshSnapshot();
     } else {
       setActionError(res.error || 'Impossibile rifiutare la richiesta.');
     }
@@ -161,11 +168,12 @@ export const OrdersManager: React.FC = () => {
 
     if (res.success) {
       setActionNotice(
-        `Ordine #${fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)} contrassegnato come Spedito!`
+        `Ordine #${fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)} contrassegnato come Spedito.`
       );
       setFulfillingOrder(null);
       setTrackingNumber('');
       loadData();
+      refreshSnapshot();
     } else {
       setActionError(res.error || 'Impossibile aggiornare la spedizione.');
     }
@@ -242,6 +250,87 @@ export const OrdersManager: React.FC = () => {
 
   const totalAllCount = requests.length + orders.length + ebayOrders.length;
 
+  const handleExportCsv = () => {
+    const rows: Array<Array<string | number | null | undefined>> = [];
+
+    if (activeTab === 'all' || activeTab === 'requests') {
+      filteredRequests.forEach((r) => {
+        rows.push([
+          'Richiesta Shop',
+          r.id.slice(0, 8),
+          new Date(r.created_at).toLocaleString('it-IT'),
+          r.inventory?.title || 'Ricambio',
+          r.inventory?.oem_code || '',
+          r.quantity,
+          Number(r.price_at_request).toFixed(2),
+          r.buyer_profile?.full_name || 'Cliente',
+          r.delivery_method === 'pickup' ? 'Ritiro al banco' : 'Spedizione',
+          r.status,
+          '',
+        ]);
+      });
+    }
+
+    if (activeTab === 'all' || activeTab === 'orders') {
+      filteredOrders.forEach((o) => {
+        rows.push([
+          'Ordine Shop',
+          o.order_number || o.id.slice(0, 8),
+          new Date(o.created_at).toLocaleString('it-IT'),
+          o.inventory?.title || 'Ricambio',
+          o.inventory?.oem_code || '',
+          o.quantity,
+          Number(o.total).toFixed(2),
+          o.buyer_profile?.full_name || 'Cliente',
+          o.delivery_method === 'pickup' ? 'Ritiro al banco' : o.shipping_address || 'Corriere',
+          o.fulfillment_status || o.status,
+          o.tracking_number || '',
+        ]);
+      });
+    }
+
+    if (activeTab === 'all' || activeTab === 'ebay') {
+      filteredEbayOrders.forEach((eo) => {
+        rows.push([
+          'Ordine eBay',
+          eo.ebay_order_id,
+          new Date(eo.creation_date).toLocaleString('it-IT'),
+          (eo.line_items || []).map((li) => li.title).join(' + ') || 'Articoli eBay',
+          '',
+          (eo.line_items || []).reduce((acc, li) => acc + (li.quantity || 1), 0),
+          Number(eo.total_price).toFixed(2),
+          eo.buyer_name || eo.buyer_username,
+          eo.shipping_address
+            ? `${eo.shipping_address.addressLine1 || ''}, ${eo.shipping_address.city || ''}`
+            : 'eBay',
+          eo.order_status,
+          eo.tracking_number || '',
+        ]);
+      });
+    }
+
+    if (rows.length === 0) return;
+
+    downloadCsvFile(
+      `autopia-ordini-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        'Tipo',
+        'Riferimento',
+        'Data',
+        'Articolo',
+        'OEM',
+        'Quantità',
+        'Importo (€)',
+        'Cliente',
+        'Consegna',
+        'Stato',
+        'Tracking',
+      ],
+      rows
+    );
+    setActionNotice(`Esportate ${rows.length} transazioni in formato CSV.`);
+  };
+
   const getRequestBadge = (status: string): { label: string; tone: BadgeTone } => {
     switch (status) {
       case 'pending_seller_confirmation':
@@ -262,32 +351,34 @@ export const OrdersManager: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322]">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#EEF2F3] font-sans text-[#131C1B]">
       {/* Header & KPI */}
-      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
-              <span className="font-semibold text-[#074E44]">
-                {currentSeller?.business_name || 'Autodemolitore'}
-              </span>
-              <span>•</span>
-              <span>Vendite & Ordini</span>
-            </div>
-            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-[#074E44]" />
-              <span>Gestione Ordini e Richieste di Acquisto</span>
-            </h1>
-            <p className="text-xs text-[#5C6B68] mt-0.5">
-              Monitora i ricambi venduti, le richieste da Autopia Shop e gli ordini sincronizzati da eBay.
-            </p>
-          </div>
-
-          <Button variant="secondary" size="sm" onClick={loadData} disabled={isLoading}>
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
-            <span>Aggiorna Dati</span>
-          </Button>
-        </div>
+      <div className="px-6 py-5 bg-white border-b border-[#DCE4E2] space-y-4 shrink-0">
+        <SectionHeader
+          icon={<ShoppingBag className="w-5 h-5" />}
+          title="Ordini, Richieste & Spedizioni"
+          description={`Monitora le richieste di acquisto e gestisci le evasioni di ${
+            currentSeller?.business_name || 'Autodemolizione'
+          } su Autopia Shop ed eBay.`}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportCsv}
+                disabled={isLoading || totalAllCount === 0}
+                title="Esporta transazioni filtrate in CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Esporta CSV</span>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={loadData} disabled={isLoading}>
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
+                <span>Aggiorna</span>
+              </Button>
+            </>
+          }
+        />
 
         {actionNotice && (
           <AlertBanner tone="success" onDismiss={() => setActionNotice(null)}>
@@ -307,58 +398,61 @@ export const OrdersManager: React.FC = () => {
             value={pendingRequestsCount}
             icon={<Clock className="w-4 h-4" />}
             accent={pendingRequestsCount > 0 ? 'warning' : 'default'}
+            onClick={() => setActiveTab('requests')}
           />
           <KpiCard
             label="Ordini Shop da spedire"
             value={paidOrdersToShipCount}
             icon={<ShoppingBag className="w-4 h-4" />}
             accent="brand"
+            onClick={() => setActiveTab('orders')}
           />
           <KpiCard
             label="Ordini eBay da spedire"
             value={ebayOrdersToShipCount}
             icon={<Globe className="w-4 h-4" />}
+            accent="cyan"
+            onClick={() => setActiveTab('ebay')}
           />
           <KpiCard
             label="Totale transazioni"
             value={totalAllCount}
             icon={<CheckCircle2 className="w-4 h-4" />}
             accent="success"
+            onClick={() => setActiveTab('all')}
           />
         </div>
 
         {/* Segment Tab Bar + Filtri */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
-          <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EEF2F1] border border-[#DCE5E3]">
+          <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#E9EFEE] border border-[#DCE4E2]">
             <button
               type="button"
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'all'
-                  ? 'bg-white text-[#074E44] shadow-xs'
-                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+                  ? 'bg-[#121B1A] text-white shadow-xs'
+                  : 'text-[#566663] hover:text-[#131C1B]'
               }`}
             >
               <Filter className="w-3.5 h-3.5" />
               <span>Tutti</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EAF3F1] text-[#074E44] tabular-nums">
-                {totalAllCount}
-              </span>
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">({totalAllCount})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('requests')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'requests'
-                  ? 'bg-white text-[#074E44] shadow-xs'
-                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+                  ? 'bg-[#121B1A] text-white shadow-xs'
+                  : 'text-[#566663] hover:text-[#131C1B]'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Richieste Shop</span>
               {pendingRequestsCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold tabular-nums">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/90 text-[#121B1A] font-bold font-mono tabular-nums">
                   {pendingRequestsCount}
                 </span>
               )}
@@ -367,39 +461,37 @@ export const OrdersManager: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'orders'
-                  ? 'bg-white text-[#074E44] shadow-xs'
-                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+                  ? 'bg-[#121B1A] text-white shadow-xs'
+                  : 'text-[#566663] hover:text-[#131C1B]'
               }`}
             >
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>Ordini Shop</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EDF2F1] text-[#5C6B68] tabular-nums">
-                {orders.length}
-              </span>
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">({orders.length})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('ebay')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
                 activeTab === 'ebay'
-                  ? 'bg-white text-[#074E44] shadow-xs'
-                  : 'text-[#5C6B68] hover:text-[#1A2322]'
+                  ? 'bg-[#121B1A] text-white shadow-xs'
+                  : 'text-[#566663] hover:text-[#131C1B]'
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
               <span>Ordini eBay</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EDF2F1] text-[#5C6B68] tabular-nums">
-                {ebayOrders.length}
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                ({ebayOrders.length})
               </span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1 lg:max-w-xl">
             <div className="relative sm:col-span-2">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8A9895]" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#7C8E8A]" />
               <input
                 type="text"
                 value={search}
@@ -446,7 +538,7 @@ export const OrdersManager: React.FC = () => {
                     <Clock className="w-4 h-4" />
                     <span>Richieste di Acquisto Autopia Shop ({filteredRequests.length})</span>
                   </h2>
-                  <span className="text-[11px] text-[#5C6B68]">
+                  <span className="text-[11px] text-[#566663]">
                     Verifica la disponibilità del ricambio per confermare la vendita
                   </span>
                 </div>
@@ -457,19 +549,16 @@ export const OrdersManager: React.FC = () => {
                     const badge = getRequestBadge(req.status);
 
                     return (
-                      <div
-                        key={req.id}
-                        className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
-                      >
+                      <div key={req.id} className={`${uiClasses.card} p-4 space-y-3`}>
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#EEF2F1]">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-xs font-bold text-[#074E44] tabular-nums">
                               Richiesta #{req.id.slice(0, 8)}
                             </span>
                             <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
-                            <span className="text-[11px] text-[#5C6B68]">
+                            <span className="text-[11px] text-[#566663]">
                               Modalità:{' '}
-                              <strong className="text-[#1A2322]">
+                              <strong className="text-[#131C1B]">
                                 {req.delivery_method === 'pickup'
                                   ? 'Ritiro al banco'
                                   : 'Spedizione corriere'}
@@ -477,10 +566,10 @@ export const OrdersManager: React.FC = () => {
                             </span>
                           </div>
 
-                          <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                          <div className="text-xs text-[#566663] flex items-center gap-3 tabular-nums">
                             <span>
                               Data:{' '}
-                              <strong className="text-[#1A2322]">
+                              <strong className="text-[#131C1B]">
                                 {new Date(req.created_at).toLocaleString('it-IT')}
                               </strong>
                             </span>
@@ -491,28 +580,33 @@ export const OrdersManager: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                          <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                            <div className="text-xs font-bold text-[#131C1B] flex items-center gap-1.5">
                               <Package className="w-3.5 h-3.5 text-[#074E44]" />
                               <span>{req.inventory?.title || 'Ricambio non specificato'}</span>
                             </div>
-                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
-                              {req.inventory?.oem_code && (
-                                <div>
-                                  Codice OEM:{' '}
-                                  <strong className="text-[#1A2322] font-mono">
-                                    {req.inventory.oem_code}
-                                  </strong>
-                                </div>
-                              )}
-                              {req.inventory?.position_note && (
-                                <div>
-                                  Scaffale:{' '}
-                                  <strong className="text-[#074E44]">
-                                    {req.inventory.position_note}
-                                  </strong>
-                                </div>
-                              )}
+                            <div className="text-[#566663] space-y-0.5 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                {req.inventory?.oem_code && (
+                                  <span>
+                                    OEM{' '}
+                                    <strong className="text-[#131C1B] font-mono">
+                                      {req.inventory.oem_code}
+                                    </strong>
+                                  </span>
+                                )}
+                                {req.inventory?.position_note && (
+                                  <>
+                                    {req.inventory?.oem_code && <span aria-hidden="true">·</span>}
+                                    <span>
+                                      Scaffale{' '}
+                                      <strong className="text-[#074E44]">
+                                        {req.inventory.position_note}
+                                      </strong>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                               {req.inventory?.seller_vehicles && (
                                 <div>
                                   Veicolo: {req.inventory.seller_vehicles.make}{' '}
@@ -525,40 +619,40 @@ export const OrdersManager: React.FC = () => {
                               )}
                               <div className="tabular-nums">
                                 Quantità richiesta:{' '}
-                                <strong className="text-[#1A2322]">{req.quantity} pz</strong>
+                                <strong className="text-[#131C1B] font-mono">{req.quantity} pz</strong>
                               </div>
                             </div>
                           </div>
 
-                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                          <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                            <div className="text-xs font-bold text-[#131C1B] flex items-center gap-1.5">
                               <User className="w-3.5 h-3.5 text-[#074E44]" />
                               <span>Acquirente Autopia Shop</span>
                             </div>
-                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                            <div className="text-[#566663] space-y-0.5 text-[11px]">
                               <div>
                                 Nome:{' '}
-                                <strong className="text-[#1A2322]">
+                                <strong className="text-[#131C1B]">
                                   {req.buyer_profile?.full_name || 'Cliente Autopia'}
                                 </strong>
                               </div>
                               {req.buyer_profile?.phone && (
                                 <div className="flex items-center gap-1">
-                                  <Phone className="w-3 h-3 text-[#8A9895]" />
-                                  <span className="font-mono text-[#1A2322]">
+                                  <Phone className="w-3 h-3 text-[#7C8E8A]" />
+                                  <span className="font-mono text-[#131C1B]">
                                     {req.buyer_profile.phone}
                                   </span>
                                 </div>
                               )}
                               {req.buyer_profile?.city && (
                                 <div className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3 text-[#8A9895]" />
+                                  <MapPin className="w-3 h-3 text-[#7C8E8A]" />
                                   <span>{req.buyer_profile.city}</span>
                                 </div>
                               )}
                               {req.buyer_note && (
-                                <div className="mt-1 p-2 bg-white rounded-md border border-[#E2E8E7] text-[#2E3C3A] italic">
-                                  "{req.buyer_note}"
+                                <div className="mt-1 p-2 bg-white rounded-md border border-[#DCE4E2] text-[#2E3C3A] italic">
+                                  &ldquo;{req.buyer_note}&rdquo;
                                 </div>
                               )}
                             </div>
@@ -599,9 +693,9 @@ export const OrdersManager: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#074E44] flex items-center gap-1.5">
                     <ShoppingBag className="w-4 h-4" />
-                    <span>Ordini Conclusi & Spedizioni Autopia Shop ({filteredOrders.length})</span>
+                    <span>Ordini Conclusi &amp; Spedizioni Autopia Shop ({filteredOrders.length})</span>
                   </h2>
-                  <span className="text-[11px] text-[#5C6B68]">
+                  <span className="text-[11px] text-[#566663]">
                     Ordini pagati online con pagamento protetto
                   </span>
                 </div>
@@ -614,30 +708,27 @@ export const OrdersManager: React.FC = () => {
                       ord.fulfillment_status === 'completed';
 
                     return (
-                      <div
-                        key={ord.id}
-                        className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
-                      >
+                      <div key={ord.id} className={`${uiClasses.card} p-4 space-y-3`}>
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#EEF2F1]">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-xs font-bold text-[#074E44] tabular-nums">
                               Ordine #{ord.order_number || ord.id.slice(0, 8)}
                             </span>
                             <StatusBadge tone={isShipped ? 'brand' : 'success'}>
-                              {isShipped ? 'Spedito / Consegnato' : 'Pagato • Da Spedire'}
+                              {isShipped ? 'Spedito / Consegnato' : 'Pagato · Da Spedire'}
                             </StatusBadge>
-                            <span className="text-[11px] text-[#5C6B68]">
-                              Canale:{' '}
-                              <strong className="text-[#1A2322] capitalize">
+                            <span className="text-[11px] text-[#566663]">
+                              Canale{' '}
+                              <strong className="text-[#131C1B] capitalize">
                                 {ord.sale_channel || 'Autopia Shop'}
                               </strong>
                             </span>
                           </div>
 
-                          <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                          <div className="text-xs text-[#566663] flex items-center gap-3 tabular-nums">
                             <span>
                               Data:{' '}
-                              <strong className="text-[#1A2322]">
+                              <strong className="text-[#131C1B]">
                                 {new Date(ord.created_at).toLocaleString('it-IT')}
                               </strong>
                             </span>
@@ -648,54 +739,61 @@ export const OrdersManager: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                          <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                            <div className="text-xs font-bold text-[#131C1B] flex items-center gap-1.5">
                               <Package className="w-3.5 h-3.5 text-[#074E44]" />
                               <span>{ord.inventory?.title || 'Ricambio non specificato'}</span>
                             </div>
-                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
-                              {ord.inventory?.oem_code && (
-                                <div>
-                                  Codice OEM:{' '}
-                                  <strong className="text-[#1A2322] font-mono">
-                                    {ord.inventory.oem_code}
-                                  </strong>
-                                </div>
-                              )}
-                              {ord.inventory?.position_note && (
-                                <div>
-                                  Scaffale:{' '}
-                                  <strong className="text-[#074E44]">
-                                    {ord.inventory.position_note}
-                                  </strong>
+                            <div className="text-[#566663] space-y-0.5 text-[11px]">
+                              {(ord.inventory?.oem_code || ord.inventory?.position_note) && (
+                                <div className="flex flex-wrap items-center gap-x-2">
+                                  {ord.inventory?.oem_code && (
+                                    <span>
+                                      OEM{' '}
+                                      <strong className="text-[#131C1B] font-mono">
+                                        {ord.inventory.oem_code}
+                                      </strong>
+                                    </span>
+                                  )}
+                                  {ord.inventory?.position_note && (
+                                    <>
+                                      {ord.inventory?.oem_code && <span aria-hidden="true">·</span>}
+                                      <span>
+                                        Scaffale{' '}
+                                        <strong className="text-[#074E44]">
+                                          {ord.inventory.position_note}
+                                        </strong>
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               )}
                               <div className="tabular-nums">
-                                Quantità: <strong className="text-[#1A2322]">{ord.quantity} pz</strong> •
-                                Netto venditore:{' '}
-                                <strong className="text-emerald-700">
+                                Quantità: <strong className="text-[#131C1B] font-mono">{ord.quantity} pz</strong>{' '}
+                                <span aria-hidden="true">·</span> Netto venditore:{' '}
+                                <strong className="text-emerald-700 font-mono">
                                   € {Number(ord.seller_amount).toFixed(2)}
                                 </strong>
                               </div>
                             </div>
                           </div>
 
-                          <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-xs font-bold text-[#1A2322] flex items-center gap-1.5">
+                          <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                            <div className="text-xs font-bold text-[#131C1B] flex items-center gap-1.5">
                               <Truck className="w-3.5 h-3.5 text-[#074E44]" />
                               <span>Indirizzo di Consegna / Ritiro</span>
                             </div>
-                            <div className="text-[#5C6B68] space-y-0.5 text-[11px]">
+                            <div className="text-[#566663] space-y-0.5 text-[11px]">
                               <div>
                                 Destinatario:{' '}
-                                <strong className="text-[#1A2322]">
+                                <strong className="text-[#131C1B]">
                                   {ord.buyer_profile?.full_name || 'Cliente'}
                                 </strong>
                               </div>
                               {ord.shipping_address ? (
                                 <div>
                                   Indirizzo:{' '}
-                                  <span className="text-[#1A2322] font-medium">
+                                  <span className="text-[#131C1B] font-medium">
                                     {ord.shipping_address}
                                   </span>
                                 </div>
@@ -745,29 +843,26 @@ export const OrdersManager: React.FC = () => {
                     <Globe className="w-4 h-4" />
                     <span>Ordini Sincronizzati da eBay ({filteredEbayOrders.length})</span>
                   </h2>
-                  <span className="text-[11px] text-[#5C6B68]">Canale eBay Sandbox</span>
+                  <span className="text-[11px] text-[#566663]">Canale eBay Sandbox</span>
                 </div>
 
                 <div className="space-y-3">
                   {filteredEbayOrders.map((eo) => (
-                    <div
-                      key={eo.id}
-                      className="p-4 bg-white border border-[#E2E8E7] rounded-xl space-y-3 shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
-                    >
+                    <div key={eo.id} className={`${uiClasses.card} p-4 space-y-3`}>
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 border-b border-[#EEF2F1]">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs font-bold text-[#074E44]">
                             eBay #{eo.ebay_order_id}
                           </span>
                           <StatusBadge tone={eo.order_status === 'SHIPPED' ? 'brand' : 'success'}>
-                            {eo.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato • Da Spedire'}
+                            {eo.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato · Da Spedire'}
                           </StatusBadge>
                         </div>
 
-                        <div className="text-xs text-[#5C6B68] flex items-center gap-3 tabular-nums">
+                        <div className="text-xs text-[#566663] flex items-center gap-3 tabular-nums">
                           <span>
                             Data:{' '}
-                            <strong className="text-[#1A2322]">
+                            <strong className="text-[#131C1B]">
                               {new Date(eo.creation_date).toLocaleDateString('it-IT')}
                             </strong>
                           </span>
@@ -778,23 +873,23 @@ export const OrdersManager: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                        <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                          <div className="text-xs font-bold text-[#1A2322]">
+                        <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                          <div className="text-xs font-bold text-[#131C1B]">
                             Articoli Venduti su eBay
                           </div>
                           {(eo.line_items || []).map((li: EbayOrderLineItem, idx: number) => (
                             <div key={idx} className="text-[#3F4E4B] text-[11px] tabular-nums">
-                              • <strong className="text-[#1A2322]">{li.title}</strong> (Qtà:{' '}
+                              · <strong className="text-[#131C1B]">{li.title}</strong> (Qtà:{' '}
                               {li.quantity}) {li.lineItemCost ? `- € ${li.lineItemCost}` : ''}
                             </div>
                           ))}
                         </div>
 
-                        <div className="bg-[#FAFBFB] p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                          <div className="text-xs font-bold text-[#1A2322]">Destinatario eBay</div>
-                          <div className="text-[#5C6B68] text-[11px]">
+                        <div className="bg-[#F6F8F8] p-3 rounded-lg border border-[#E1E8E6] space-y-1">
+                          <div className="text-xs font-bold text-[#131C1B]">Destinatario eBay</div>
+                          <div className="text-[#566663] text-[11px]">
                             <div>
-                              Utente: <strong className="text-[#1A2322]">@{eo.buyer_username}</strong>{' '}
+                              Utente: <strong className="text-[#131C1B]">@{eo.buyer_username}</strong>{' '}
                               {eo.buyer_name ? `(${eo.buyer_name})` : ''}
                             </div>
                             {eo.shipping_address && (
@@ -832,44 +927,46 @@ export const OrdersManager: React.FC = () => {
 
       {/* MODAL CONFERMA RICHIESTA */}
       {confirmingReq && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[#074E44]">
-                <CheckCircle2 className="w-5 h-5" />
-                <h3 className="text-base font-bold text-[#162220]">Conferma Richiesta di Acquisto</h3>
+        <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE4E2] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-5 py-3.5 bg-[#121B1A] text-white flex items-center justify-between border-b border-[#253331]">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-4.5 h-4.5 text-[#5EEAD4]" />
+                <h3 className="text-sm font-bold">Conferma Richiesta di Acquisto</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmingReq(null)}
-                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+                className="p-1 text-[#95A7A3] hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-[#3F4E4B] leading-relaxed">
-              Stai confermando la disponibilità del ricambio{' '}
-              <strong className="text-[#1A2322]">"{confirmingReq.inventory?.title}"</strong> per il cliente.
-              Lo stato del ricambio a magazzino verrà impostato su{' '}
-              <strong className="text-[#074E44]">RISERVATO</strong> per evitare vendite duplicate.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConfirmingReq(null)}
-                disabled={isSubmittingAction}
-              >
-                Annulla
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleConfirmRequest}
-                loading={isSubmittingAction}
-              >
-                Conferma e Riserva
-              </Button>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-[#3F4E4B] leading-relaxed">
+                Stai confermando la disponibilità del ricambio{' '}
+                <strong className="text-[#131C1B]">&ldquo;{confirmingReq.inventory?.title}&rdquo;</strong> per il cliente.
+                Lo stato del ricambio a magazzino verrà impostato su{' '}
+                <strong className="text-[#074E44]">RISERVATO</strong> per evitare vendite duplicate.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#EEF2F1]">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setConfirmingReq(null)}
+                  disabled={isSubmittingAction}
+                >
+                  Annulla
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleConfirmRequest}
+                  loading={isSubmittingAction}
+                >
+                  Conferma e Riserva
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -877,73 +974,75 @@ export const OrdersManager: React.FC = () => {
 
       {/* MODAL RIFIUTO RICHIESTA */}
       {rejectingReq && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-red-700">
-                <XCircle className="w-5 h-5" />
-                <h3 className="text-base font-bold text-[#162220]">Rifiuta Richiesta di Acquisto</h3>
+        <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE4E2] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-5 py-3.5 bg-[#121B1A] text-white flex items-center justify-between border-b border-[#253331]">
+              <div className="flex items-center gap-2.5">
+                <XCircle className="w-4.5 h-4.5 text-red-400" />
+                <h3 className="text-sm font-bold">Rifiuta Richiesta di Acquisto</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setRejectingReq(null)}
-                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+                className="p-1 text-[#95A7A3] hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-[#3F4E4B]">
-              Indica il motivo per cui non puoi evadere la richiesta per{' '}
-              <strong className="text-[#1A2322]">"{rejectingReq.inventory?.title}"</strong>:
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className={uiClasses.label}>Motivo</label>
-                <select
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  className={uiClasses.select}
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-[#3F4E4B]">
+                Indica il motivo per cui non puoi evadere la richiesta per{' '}
+                <strong className="text-[#131C1B]">&ldquo;{rejectingReq.inventory?.title}&rdquo;</strong>:
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className={uiClasses.label}>Motivo</label>
+                  <select
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className={uiClasses.select}
+                  >
+                    <option value="Pezzo non più disponibile a magazzino">
+                      Pezzo non più disponibile a magazzino
+                    </option>
+                    <option value="Danneggiato durante lo smontaggio">
+                      Danneggiato durante lo smontaggio
+                    </option>
+                    <option value="Incompatibile con il modello richiesto">
+                      Incompatibile con il modello richiesto
+                    </option>
+                    <option value="Altro">Altro motivo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={uiClasses.label}>Nota aggiuntiva (opzionale)</label>
+                  <textarea
+                    value={rejectNote}
+                    onChange={(e) => setRejectNote(e.target.value)}
+                    placeholder="Nota per il cliente..."
+                    rows={2}
+                    className={uiClasses.textarea}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#EEF2F1]">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRejectingReq(null)}
+                  disabled={isSubmittingAction}
                 >
-                  <option value="Pezzo non più disponibile a magazzino">
-                    Pezzo non più disponibile a magazzino
-                  </option>
-                  <option value="Danneggiato durante lo smontaggio">
-                    Danneggiato durante lo smontaggio
-                  </option>
-                  <option value="Incompatibile con il modello richiesto">
-                    Incompatibile con il modello richiesto
-                  </option>
-                  <option value="Altro">Altro motivo</option>
-                </select>
+                  Annulla
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleRejectRequest}
+                  loading={isSubmittingAction}
+                >
+                  Conferma Rifiuto
+                </Button>
               </div>
-              <div>
-                <label className={uiClasses.label}>Nota aggiuntiva (opzionale)</label>
-                <textarea
-                  value={rejectNote}
-                  onChange={(e) => setRejectNote(e.target.value)}
-                  placeholder="Nota per il cliente..."
-                  rows={2}
-                  className={uiClasses.textarea}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setRejectingReq(null)}
-                disabled={isSubmittingAction}
-              >
-                Annulla
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleRejectRequest}
-                loading={isSubmittingAction}
-              >
-                Conferma Rifiuto
-              </Button>
             </div>
           </div>
         </div>
@@ -951,72 +1050,74 @@ export const OrdersManager: React.FC = () => {
 
       {/* MODAL SPEDIZIONE ORDINE */}
       {fulfillingOrder && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[#074E44]">
-                <Truck className="w-5 h-5" />
-                <h3 className="text-base font-bold text-[#162220]">Registra Spedizione Ordine</h3>
+        <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE4E2] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-5 py-3.5 bg-[#121B1A] text-white flex items-center justify-between border-b border-[#253331]">
+              <div className="flex items-center gap-2.5">
+                <Truck className="w-4.5 h-4.5 text-[#5EEAD4]" />
+                <h3 className="text-sm font-bold">Registra Spedizione Ordine</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setFulfillingOrder(null)}
-                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+                className="p-1 text-[#95A7A3] hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-[#3F4E4B]">
-              Inserisci i dettagli di spedizione per l'ordine #
-              <span className="font-mono font-semibold text-[#1A2322]">
-                {fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)}
-              </span>
-              :
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className={uiClasses.label}>Corriere</label>
-                <select
-                  value={carrier}
-                  onChange={(e) => setCarrier(e.target.value)}
-                  className={uiClasses.select}
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-[#3F4E4B]">
+                Inserisci i dettagli di spedizione per l&apos;ordine #
+                <span className="font-mono font-semibold text-[#131C1B]">
+                  {fulfillingOrder.order_number || fulfillingOrder.id.slice(0, 8)}
+                </span>
+                :
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className={uiClasses.label}>Corriere</label>
+                  <select
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    className={uiClasses.select}
+                  >
+                    <option value="BRT Corriere Espresso">BRT Corriere Espresso</option>
+                    <option value="GLS Italy">GLS Italy</option>
+                    <option value="SDA Express Courier">SDA Express Courier</option>
+                    <option value="DHL Express">DHL Express</option>
+                    <option value="Poste Italiane">Poste Italiane</option>
+                    <option value="Altro">Altro vettore</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={uiClasses.label}>Codice di Tracking (Lettera di Vettura)</label>
+                  <input
+                    type="text"
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder="Es. BRT123456789IT"
+                    className={`${uiClasses.input} font-mono`}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#EEF2F1]">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFulfillingOrder(null)}
+                  disabled={isSubmittingAction}
                 >
-                  <option value="BRT Corriere Espresso">BRT Corriere Espresso</option>
-                  <option value="GLS Italy">GLS Italy</option>
-                  <option value="SDA Express Courier">SDA Express Courier</option>
-                  <option value="DHL Express">DHL Express</option>
-                  <option value="Poste Italiane">Poste Italiane</option>
-                  <option value="Altro">Altro vettore</option>
-                </select>
+                  Annulla
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleFulfillOrder}
+                  loading={isSubmittingAction}
+                >
+                  Salva e Segna come Spedito
+                </Button>
               </div>
-              <div>
-                <label className={uiClasses.label}>Codice di Tracking (Lettera di Vettura)</label>
-                <input
-                  type="text"
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  placeholder="Es. BRT123456789IT"
-                  className={`${uiClasses.input} font-mono`}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setFulfillingOrder(null)}
-                disabled={isSubmittingAction}
-              >
-                Annulla
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleFulfillOrder}
-                loading={isSubmittingAction}
-              >
-                Salva e Segna come Spedito
-              </Button>
             </div>
           </div>
         </div>

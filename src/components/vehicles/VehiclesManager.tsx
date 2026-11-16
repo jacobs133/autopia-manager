@@ -14,6 +14,7 @@ import {
   X,
   Database as DatabaseIcon,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import type {
   SellerVehicle,
@@ -34,22 +35,26 @@ import {
   fetchCatalogTotalCount,
   clearCatalogCache,
 } from '../../services/vehiclesService';
+import { downloadCsvFile } from '../../utils/csvExport';
 import { VehicleFormModal } from './VehicleFormModal';
 import { VehicleDetailsModal } from './VehicleDetailsModal';
 import { DeleteVehicleModal } from './DeleteVehicleModal';
 import { VehiclePartsExtractorModal } from './VehiclePartsExtractorModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import {
   AlertBanner,
   Button,
   EmptyState,
   LoadingState,
+  SectionHeader,
   StatusBadge,
   uiClasses,
 } from '../ui/DesignSystem';
 
 export const VehiclesManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
+  const { refreshSnapshot } = useDashboard();
   const currentSeller = effectiveSellerProfile || sellerProfile;
   const sellerId = currentSeller?.id;
 
@@ -318,21 +323,48 @@ export const VehiclesManager: React.FC = () => {
     return <StatusBadge tone="neutral">{statusValue || 'Non specificato'}</StatusBadge>;
   };
 
+  const handleExportYardCsv = () => {
+    if (vehicles.length === 0) return;
+    const headers = [
+      'Marca',
+      'Modello',
+      'Serie',
+      'Versione',
+      'Anno',
+      'Targa',
+      'VIN',
+      'Motore',
+      'Alimentazione',
+      'Stato',
+      'Posizione Piazzale',
+      'Data Ingresso',
+    ];
+    const rows = vehicles.map((v) => [
+      v.make,
+      v.model,
+      v.generation || '',
+      v.version || '',
+      v.year || '',
+      v.plate || '',
+      v.vin || '',
+      v.engine || '',
+      v.fuel_type || '',
+      v.status,
+      v.location || '',
+      v.arrival_date || '',
+    ]);
+    downloadCsvFile(`veicoli_piazzale_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  };
+
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto w-full space-y-5 font-sans select-none">
       {/* 1. Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-[#1A2322] tracking-tight">
-            Veicoli Demoliti
-          </h1>
-          <p className="text-xs text-[#5C6B68] mt-0.5">
-            Parco veicoli di <strong className="text-[#1A2322]">{currentSeller?.business_name || 'Autodemolitore'}</strong> e catalogo modelli Autopia
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {activeTab === 'catalog' && (
+      <SectionHeader
+        icon={<Car className="w-5 h-5" />}
+        title="Veicoli in Demolizione & Catalogo"
+        description="Registra targhe, telai VIN, gestisci le posizioni in piazzale ed estrai rapidamente i ricambi compatibili."
+        actions={
+          activeTab === 'catalog' ? (
             <Button
               variant="secondary"
               size="sm"
@@ -344,10 +376,19 @@ export const VehiclesManager: React.FC = () => {
               {!isRefreshingCache && <RefreshCw className="w-3.5 h-3.5" />}
               <span>{isRefreshingCache ? 'Sincronizzazione...' : 'Aggiorna catalogo'}</span>
             </Button>
-          )}
-
-          {activeTab === 'yard' && (
+          ) : (
             <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportYardCsv}
+                disabled={vehicles.length === 0}
+                title="Esporta la lista veicoli visibile in CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-[#074E44]" />
+                <span className="hidden sm:inline">Esporta CSV</span>
+              </Button>
+
               <Button
                 variant="secondary"
                 size="sm"
@@ -372,9 +413,9 @@ export const VehiclesManager: React.FC = () => {
                 <span>Aggiungi veicolo</span>
               </Button>
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {cacheMessage && (
         <AlertBanner tone="success" onDismiss={() => setCacheMessage(null)}>
@@ -383,17 +424,17 @@ export const VehiclesManager: React.FC = () => {
       )}
 
       {/* 2. Switcher Schede */}
-      <div className="inline-flex items-center gap-1 p-1 bg-[#E9EFEE] rounded-xl self-start">
+      <div className="inline-flex items-center gap-1 p-1 bg-[#DCE4E2] rounded-xl self-start">
         <button
           type="button"
           onClick={() => setActiveTab('yard')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'yard'
-              ? 'bg-white text-[#074E44] shadow-xs'
-              : 'text-[#5C6B68] hover:text-[#1A2322]'
+              ? 'bg-[#121B1A] text-white shadow-xs'
+              : 'text-[#455451] hover:text-[#131C1B]'
           }`}
         >
-          <Car className="w-3.5 h-3.5" />
+          <Car className={`w-3.5 h-3.5 ${activeTab === 'yard' ? 'text-[#5EEAD4]' : ''}`} />
           <span>Parco veicoli</span>
           <span className="font-mono tabular-nums text-[11px] opacity-80">({totalCount})</span>
         </button>
@@ -401,13 +442,13 @@ export const VehiclesManager: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('catalog')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'catalog'
-              ? 'bg-white text-[#074E44] shadow-xs'
-              : 'text-[#5C6B68] hover:text-[#1A2322]'
+              ? 'bg-[#121B1A] text-white shadow-xs'
+              : 'text-[#455451] hover:text-[#131C1B]'
           }`}
         >
-          <DatabaseIcon className="w-3.5 h-3.5" />
+          <DatabaseIcon className={`w-3.5 h-3.5 ${activeTab === 'catalog' ? 'text-[#5EEAD4]' : ''}`} />
           <span>Catalogo modelli</span>
           <span className="font-mono tabular-nums text-[11px] opacity-80">
             ({catalogTotalCount.toLocaleString('it-IT')})
@@ -1003,6 +1044,7 @@ export const VehiclesManager: React.FC = () => {
           }}
           onSuccess={(savedVehicle, andOpenPartsExtractor) => {
             loadVehicles();
+            refreshSnapshot();
             setActiveTab('yard');
             if (andOpenPartsExtractor) {
               setExtractorVehicle(savedVehicle);
@@ -1039,6 +1081,7 @@ export const VehiclesManager: React.FC = () => {
           sellerId={sellerId}
           onComplete={() => {
             loadVehicles();
+            refreshSnapshot();
           }}
         />
       )}
@@ -1051,6 +1094,7 @@ export const VehiclesManager: React.FC = () => {
           onClose={() => setVehicleToDelete(null)}
           onSuccess={() => {
             loadVehicles();
+            refreshSnapshot();
           }}
         />
       )}

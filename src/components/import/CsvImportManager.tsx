@@ -7,8 +7,10 @@ import {
   FileText,
   Layers,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import type { CsvPartRow } from '../../types/inventory';
 import {
   batchImportInventory,
@@ -18,11 +20,13 @@ import {
   uiClasses,
   Button,
   AlertBanner,
+  SectionHeader,
   StatusBadge,
 } from '../ui/DesignSystem';
 
 export const CsvImportManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
+  const { refreshSnapshot } = useDashboard();
   const currentSeller = effectiveSellerProfile || sellerProfile;
   const sellerId = currentSeller?.id;
 
@@ -336,6 +340,7 @@ export const CsvImportManager: React.FC = () => {
         setParsedRows([]);
         setCsvContent('');
         setFileName(null);
+        refreshSnapshot();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Eccezione durante l'importazione";
@@ -352,32 +357,69 @@ export const CsvImportManager: React.FC = () => {
     }
   };
 
-  return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322] overflow-y-auto">
-      {/* Header */}
-      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7]">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
-              <span className="font-semibold text-[#074E44]">
-                {currentSeller?.business_name || 'Autodemolitore'}
-              </span>
-              <span>•</span>
-              <span>Importazione Dati</span>
-            </div>
-            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-[#074E44]" />
-              <span>Importazione Massiva Ricambi (CSV)</span>
-            </h1>
-            <p className="text-xs text-[#5C6B68] mt-0.5">
-              Carica le giacenze del magazzino da file Excel/CSV con mappatura automatica di categorie e codici OEM.
-            </p>
-          </div>
+  const currentStep = importResult ? 3 : parsedRows.length > 0 ? 2 : 1;
+  const warningRowsCount = parsedRows.filter((r) => r.price <= 0).length;
 
-          <Button variant="secondary" size="sm" onClick={downloadSampleCsv}>
-            <Download className="w-4 h-4 text-[#074E44]" />
-            <span>Scarica File CSV Esempio</span>
-          </Button>
+  return (
+    <div className="flex-1 flex flex-col min-h-0 bg-[#EEF2F3] font-sans text-[#131C1B] overflow-y-auto">
+      {/* Header & Stepper */}
+      <div className="px-6 py-5 bg-white border-b border-[#DCE4E2] space-y-4">
+        <SectionHeader
+          icon={<FileSpreadsheet className="w-5 h-5" />}
+          title="Importazione Massiva Ricambi (CSV)"
+          description="Carica giacenze da file Excel/CSV con validazione automatica di prezzi, categorie e codici OEM."
+          actions={
+            <Button variant="secondary" size="sm" onClick={downloadSampleCsv}>
+              <Download className="w-4 h-4 text-[#074E44]" />
+              <span>Scarica File CSV Esempio</span>
+            </Button>
+          }
+        />
+
+        {/* Stepper 3 Fasi */}
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          {[
+            { num: 1, title: '1. Carica File o Testo', sub: 'CSV separato da ; o ,' },
+            { num: 2, title: '2. Validazione & Anteprima', sub: 'Controllo prezzi e codici' },
+            { num: 3, title: '3. Esito Importazione', sub: 'Riepilogo inserimenti e duplicati' },
+          ].map((st) => {
+            const active = currentStep === st.num;
+            const done = currentStep > st.num;
+            return (
+              <div
+                key={st.num}
+                className={`p-2.5 rounded-xl border text-xs transition-colors flex items-center gap-2.5 ${
+                  active
+                    ? 'bg-[#121B1A] text-white border-[#253331]'
+                    : done
+                    ? 'bg-[#EAF3F1] text-[#074E44] border-[#C1DAD5]'
+                    : 'bg-[#F6F8F8] text-[#566663] border-[#E1E8E6]'
+                }`}
+              >
+                <span
+                  className={`w-6 h-6 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
+                    active
+                      ? 'bg-[#0D9488] text-white'
+                      : done
+                      ? 'bg-[#074E44] text-white'
+                      : 'bg-white border border-[#D4DFDC] text-[#566663]'
+                  }`}
+                >
+                  {done ? <Check className="w-3.5 h-3.5" /> : st.num}
+                </span>
+                <div className="min-w-0">
+                  <div className="font-bold truncate">{st.title}</div>
+                  <div
+                    className={`text-[10.5px] truncate ${
+                      active ? 'text-[#9BB0AB]' : 'opacity-80'
+                    }`}
+                  >
+                    {st.sub}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -621,9 +663,15 @@ export const CsvImportManager: React.FC = () => {
         {parsedRows.length > 0 && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs font-bold text-[#162220] uppercase tracking-wider flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold text-[#131C1B] uppercase tracking-wider">
                 <Layers className="w-4 h-4 text-[#074E44]" />
-                <span>Anteprima Righe Riconosciute ({parsedRows.length} ricambi pronti)</span>
+                <span>Anteprima Validazione ({parsedRows.length} ricambi pronti)</span>
+                {warningRowsCount > 0 && (
+                  <StatusBadge tone="warning">
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>{warningRowsCount} senza prezzo (bozza)</span>
+                  </StatusBadge>
+                )}
               </div>
 
               <Button
@@ -646,6 +694,7 @@ export const CsvImportManager: React.FC = () => {
                 <thead className="sticky top-0 z-10">
                   <tr className={uiClasses.tableHeadRow}>
                     <th className="py-2.5 px-3">#</th>
+                    <th className="py-2.5 px-3">Esito Riga</th>
                     <th className="py-2.5 px-3">Titolo Ricambio</th>
                     <th className="py-2.5 px-3">Codice OEM</th>
                     <th className="py-2.5 px-3">Prezzo</th>
@@ -656,26 +705,45 @@ export const CsvImportManager: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EEF2F1]">
-                  {parsedRows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-[#F7FAF9]">
-                      <td className="py-2.5 px-3 text-[#8A9895] font-mono tabular-nums">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-semibold text-[#1A2322]">{row.title}</td>
-                      <td className="py-2.5 px-3 font-mono text-[#3F4E4B]">{row.oem_code || '—'}</td>
-                      <td className="py-2.5 px-3 text-[#074E44] font-bold tabular-nums">
-                        € {row.price.toFixed(2)}
-                      </td>
-                      <td className="py-2.5 px-3 font-bold tabular-nums">{row.quantity}</td>
-                      <td className="py-2.5 px-3 capitalize">
-                        <StatusBadge tone="neutral">{row.condition}</StatusBadge>
-                      </td>
-                      <td className="py-2.5 px-3 text-[#074E44] font-medium">
-                        {row.position_note || '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-[#5C6B68]">
-                        {row.category_name || 'Generica'}
-                      </td>
-                    </tr>
-                  ))}
+                  {parsedRows.map((row, idx) => {
+                    const isDraftPrice = row.price <= 0;
+                    return (
+                      <tr
+                        key={idx}
+                        className={isDraftPrice ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-[#F7FAF9]'}
+                      >
+                        <td className="py-2.5 px-3 text-[#7A8C88] font-mono tabular-nums">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {isDraftPrice ? (
+                            <StatusBadge tone="warning">Bozza (€0)</StatusBadge>
+                          ) : (
+                            <StatusBadge tone="success">Valida</StatusBadge>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-[#131C1B]">{row.title}</td>
+                        <td className="py-2.5 px-3 font-mono text-[#334441]">{row.oem_code || '—'}</td>
+                        <td
+                          className={`py-2.5 px-3 font-mono font-bold tabular-nums ${
+                            isDraftPrice ? 'text-amber-700' : 'text-[#074E44]'
+                          }`}
+                        >
+                          € {row.price.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold tabular-nums">{row.quantity}</td>
+                        <td className="py-2.5 px-3 capitalize">
+                          <StatusBadge tone="neutral">{row.condition}</StatusBadge>
+                        </td>
+                        <td className="py-2.5 px-3 text-[#074E44] font-medium">
+                          {row.position_note || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-[#566663]">
+                          {row.category_name || 'Generica'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

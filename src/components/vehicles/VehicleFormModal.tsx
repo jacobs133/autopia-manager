@@ -458,20 +458,20 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#10201E]/45 backdrop-blur-[2px] select-none font-sans">
-      <div className="w-full max-w-4xl bg-white border border-[#E2E8E7] rounded-2xl shadow-xl flex flex-col max-h-[92vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F1615]/60 backdrop-blur-[2px] select-none font-sans">
+      <div className="w-full max-w-4xl bg-white border border-[#DCE4E2] rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Intestazione Modal */}
-        <div className="px-6 py-4 bg-[#FAFBFB] border-b border-[#E2E8E7] flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-[#121B1A] text-white border-b border-[#253331] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-[#0A6256]/40 border border-[#198575]/40 text-[#5EEAD4] flex items-center justify-center">
               <DatabaseIcon className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#1A2322]">
+              <h2 className="text-sm font-bold text-white">
                 {isEditing ? 'Modifica Scheda Veicolo' : 'Registra Nuovo Veicolo'}
               </h2>
-              <p className="text-xs text-[#5C6B68]">
-                Abbina il veicolo al catalogo ufficiale Autopia e compila i dati dell'esemplare
+              <p className="text-[11px] text-[#9AB0AC]">
+                Abbina il veicolo al catalogo ufficiale Autopia e compila i dati dell&apos;esemplare
               </p>
             </div>
           </div>
@@ -479,7 +479,7 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] p-1.5 rounded-lg transition-colors cursor-pointer"
+            className="text-[#9AB0AC] hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -580,14 +580,14 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
               </div>
             ) : (
               <div className="bg-[#F7FAF9] border border-[#E2E8E7] rounded-xl p-4 space-y-4">
-                <div className="inline-flex items-center gap-1 p-1 bg-[#E9EFEE] rounded-lg">
+                <div className="inline-flex items-center gap-1 p-1 bg-[#E9EFEE] border border-[#DCE4E2] rounded-lg">
                   <button
                     type="button"
                     onClick={() => setSelectionMode('quick')}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       selectionMode === 'quick'
-                        ? 'bg-white text-[#074E44] shadow-xs'
-                        : 'text-[#5C6B68] hover:text-[#1A2322]'
+                        ? 'bg-[#121B1A] text-white shadow-xs'
+                        : 'text-[#566663] hover:text-[#131C1B]'
                     }`}
                   >
                     <Search className="w-3.5 h-3.5" />
@@ -599,8 +599,8 @@ export const VehicleFormModal: React.FC<VehicleFormModalProps> = ({
                     onClick={() => setSelectionMode('cascade')}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       selectionMode === 'cascade'
-                        ? 'bg-white text-[#074E44] shadow-xs'
-                        : 'text-[#5C6B68] hover:text-[#1A2322]'
+                        ? 'bg-[#121B1A] text-white shadow-xs'
+                        : 'text-[#566663] hover:text-[#131C1B]'
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5" />

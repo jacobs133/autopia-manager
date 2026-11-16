@@ -44,6 +44,7 @@ interface PartFormModalProps {
   initialSellerVehicleId?: string | null;
   onClose: () => void;
   onSuccess: (savedItem: InventoryItem) => void;
+  onCreatedKeepOpen?: (savedItem: InventoryItem) => void;
 }
 
 export const PartFormModal: React.FC<PartFormModalProps> = ({
@@ -52,6 +53,7 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
   initialSellerVehicleId,
   onClose,
   onSuccess,
+  onCreatedKeepOpen,
 }) => {
   const isEditing = Boolean(itemToEdit);
 
@@ -103,6 +105,7 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -283,8 +286,9 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
     }
   };
 
-  const executeSubmit = async (targetStatus: InventoryItem['status']) => {
+  const executeSubmit = async (targetStatus: InventoryItem['status'], keepOpenAfterCreate = false) => {
     setErrorMessage(null);
+    setSavedNotice(null);
 
     if (!title.trim()) {
       setErrorMessage('Inserisci il nome o la descrizione del ricambio');
@@ -399,6 +403,21 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
           return;
         }
 
+        if (keepOpenAfterCreate) {
+          setIsSubmitting(false);
+          setSavedNotice(`Ricambio "${res.data.title}" salvato in magazzino. Inserisci il prossimo mantenendo veicolo e impostazioni.`);
+          setTitle('');
+          setOemCode('');
+          setInternalCode('');
+          setPrice('');
+          setQuantity('1');
+          setSide('');
+          setDescription('');
+          setInternalNotes('');
+          onCreatedKeepOpen?.(res.data);
+          return;
+        }
+
         onSuccess(res.data);
       }
     } catch (err: unknown) {
@@ -409,29 +428,29 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-3xl my-6 overflow-hidden shadow-2xl flex flex-col text-[#1A2322] font-sans">
+    <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white border border-[#CFDAD7] rounded-2xl w-full max-w-3xl my-6 overflow-hidden shadow-2xl flex flex-col text-[#131C1B] font-sans">
         {/* Intestazione */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#EEF2F1] bg-[#FAFBFB]">
+        <div className="flex items-center justify-between px-6 py-4 bg-[#121B1A] text-white border-b border-[#253331]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] border border-[#C6DFDA] text-[#074E44] flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0A6256]/60 border border-[#198575]/60 text-[#5EEAD4] flex items-center justify-center shrink-0">
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#162220]">
+              <h2 className="text-base font-bold text-white">
                 {isEditing ? 'Modifica Scheda Ricambio' : 'Aggiungi Nuovo Ricambio'}
               </h2>
-              <p className="text-xs text-[#5C6B68]">
+              <p className="text-xs text-[#9BB0AB]">
                 {isEditing
-                  ? `Codice interno scheda: ${itemToEdit?.id.slice(0, 8)}`
-                  : 'Crea una bozza o pubblica direttamente associando il veicolo di provenienza'}
+                  ? `Codice scheda: ${itemToEdit?.id.slice(0, 8)}`
+                  : 'Crea una bozza, pubblica online o inserisci in serie mantenendo lo stesso veicolo'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[#9BB0AB] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -439,6 +458,11 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
 
         {/* Form Body */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+          {savedNotice && (
+            <AlertBanner tone="success" onDismiss={() => setSavedNotice(null)}>
+              {savedNotice}
+            </AlertBanner>
+          )}
           {errorMessage && <AlertBanner tone="danger">{errorMessage}</AlertBanner>}
 
           {/* SEZIONE 1: ORIGINE VEICOLO */}
@@ -976,10 +1000,23 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
               Annulla
             </Button>
 
+            {!isEditing && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => executeSubmit('inactive', true)}
+                loading={isSubmitting}
+                title="Salva come bozza e continua ad inserire un altro ricambio per lo stesso veicolo"
+              >
+                {!isSubmitting && <Save className="w-3.5 h-3.5 text-[#0D9488]" />}
+                <span>Salva e crea simile</span>
+              </Button>
+            )}
+
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => executeSubmit('inactive')}
+              onClick={() => executeSubmit('inactive', false)}
               loading={isSubmitting}
               title="Salva come bozza offline per completare in seguito"
             >
@@ -990,7 +1027,7 @@ export const PartFormModal: React.FC<PartFormModalProps> = ({
             <Button
               variant="primary"
               size="sm"
-              onClick={() => executeSubmit('available')}
+              onClick={() => executeSubmit('available', false)}
               loading={isSubmitting}
               title="Verifica e pubblica subito online su Autopia Shop"
             >

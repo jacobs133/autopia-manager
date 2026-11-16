@@ -82,10 +82,10 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
         success: res.success,
         message: res.message,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResult({
         success: false,
-        message: err?.message || 'Errore imprevisto durante il test di connessione',
+        message: err instanceof Error ? err.message : 'Errore imprevisto durante il test di connessione',
       });
     } finally {
       setIsTesting(false);
@@ -114,8 +114,8 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
       await refreshAuth();
       if (onSaved) onSaved();
       onClose();
-    } catch (err: any) {
-      setSaveError(err?.message || 'Errore durante l\'aggiornamento della connessione');
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Errore durante l'aggiornamento della connessione");
     } finally {
       setIsSaving(false);
     }
@@ -132,19 +132,19 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#10201E]/45 backdrop-blur-[2px] font-sans">
-      <div className="w-full max-w-lg bg-white border border-[#E2E8E7] rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Intestazione */}
-        <div className="px-5 py-4 border-b border-[#E2E8E7] flex items-center justify-between bg-[#FAFBFB]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F1615]/60 backdrop-blur-[2px] font-sans">
+      <div className="w-full max-w-lg bg-white border border-[#DCE4E2] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Intestazione scura desktop */}
+        <div className="px-5 py-4 border-b border-[#253331] flex items-center justify-between bg-[#121B1A] text-white">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-[#0A6256]/40 border border-[#198575]/40 text-[#5EEAD4] flex items-center justify-center">
               <Database className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#1A2322]">
+              <h2 className="text-sm font-bold text-white">
                 Configurazione Connessione Backend
               </h2>
-              <p className="text-xs text-[#5C6B68]">
+              <p className="text-[11px] text-[#9AB0AC]">
                 Imposta i parametri del progetto Supabase di Autopia
               </p>
             </div>
@@ -153,7 +153,7 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-[#9AB0AC] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
             title="Chiudi"
           >
             <X className="w-4 h-4" />
@@ -163,13 +163,13 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
         {/* Corpo modale */}
         <div className="p-5 space-y-4 overflow-y-auto">
           <AlertBanner tone="info" title="Chiave pubblica di progetto">
-            Inserisci soltanto l'<strong>URL del progetto</strong> e la <strong>chiave pubblica anon</strong> (non utilizzare mai chiavi private <em>service_role</em>).
+            Inserisci soltanto l&apos;<strong>URL del progetto</strong> e la <strong>chiave pubblica anon</strong> (non utilizzare mai chiavi private <em>service_role</em>).
           </AlertBanner>
 
           <form id="backend-config-form" onSubmit={handleSave} className="space-y-3.5 text-xs">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-[#2E3C3A]">
+                <label className="text-[11px] font-semibold text-[#334441]">
                   URL Progetto Supabase
                 </label>
                 <span className="text-[11px] text-[#748481] font-mono">https://*.supabase.co</span>
@@ -187,7 +187,7 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-[#2E3C3A] flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-[#334441] flex items-center gap-1">
                   <KeyRound className="w-3.5 h-3.5 text-[#074E44]" />
                   <span>Chiave Pubblica Anon (anon / public)</span>
                 </label>
@@ -205,7 +205,7 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
             </div>
 
             {/* Guida rapida */}
-            <div className="border border-[#E2E8E7] rounded-xl bg-[#F7FAF9] p-3">
+            <div className="border border-[#E1E8E6] rounded-xl bg-[#F6F8F8] p-3">
               <button
                 type="button"
                 onClick={() => setShowHelp(!showHelp)}
@@ -215,11 +215,11 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
                   <HelpCircle className="w-3.5 h-3.5 text-[#074E44]" />
                   <span>Dove trovare questi parametri in Supabase</span>
                 </span>
-                <span className="text-[11px] font-mono text-[#5C6B68]">{showHelp ? 'Nascondi' : 'Mostra'}</span>
+                <span className="text-[11px] font-mono text-[#566663]">{showHelp ? 'Nascondi' : 'Mostra'}</span>
               </button>
 
               {showHelp && (
-                <ol className="mt-2.5 pt-2.5 border-t border-[#E2E8E7] list-decimal list-inside space-y-1 text-[11px] text-[#5C6B68] leading-relaxed">
+                <ol className="mt-2.5 pt-2.5 border-t border-[#E1E8E6] list-decimal list-inside space-y-1 text-[11px] text-[#566663] leading-relaxed">
                   <li>
                     Accedi a{' '}
                     <a
@@ -249,14 +249,12 @@ export const BackendConfigModal: React.FC<BackendConfigModalProps> = ({
               </AlertBanner>
             )}
 
-            {saveError && (
-              <AlertBanner tone="danger">{saveError}</AlertBanner>
-            )}
+            {saveError && <AlertBanner tone="danger">{saveError}</AlertBanner>}
           </form>
         </div>
 
         {/* Footer azioni */}
-        <div className="px-5 py-3.5 border-t border-[#E2E8E7] bg-[#FAFBFB] flex items-center justify-between gap-3">
+        <div className="px-5 py-3.5 border-t border-[#DCE4E2] bg-[#F6F8F8] flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Button
               type="button"

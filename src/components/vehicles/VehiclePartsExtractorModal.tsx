@@ -37,6 +37,7 @@ import {
   fetchVehicleDrafts,
   updateInventoryItem,
 } from '../../services/partsService';
+import { useDashboard } from '../../contexts/DashboardContext';
 import { AlertBanner, Button, KpiCard, StatusBadge, uiClasses } from '../ui/DesignSystem';
 
 interface VehiclePartsExtractorModalProps {
@@ -57,6 +58,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   vehicle,
   onDraftsGenerated,
 }) => {
+  const { refreshSnapshot } = useDashboard();
   const [step, setStep] = useState<Step>('select_parts');
 
   const [catalog, setCatalog] = useState<RecommendedCategoryGroup[]>([]);
@@ -99,6 +101,8 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   });
   const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
   const [isPublishingBatch, setIsPublishingBatch] = useState<boolean>(false);
+  const [confirmBatchPublish, setConfirmBatchPublish] = useState<boolean>(false);
+  const [confirmResetCatalog, setConfirmResetCatalog] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -182,7 +186,6 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   };
 
   const handleDeletePart = (itemId: string) => {
-    if (!window.confirm('Rimuovere questo ricambio dall\'elenco consigliato?')) return;
     const updated = removePartFromCategory(itemId);
     setCatalog([...updated]);
     setSelectedItemIds((prev) => {
@@ -190,6 +193,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
       next.delete(itemId);
       return next;
     });
+    setStatusMessage('Voce rimossa dalle proposte locali.');
   };
 
   const handleAddNewCategory = () => {
@@ -201,10 +205,16 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   };
 
   const handleResetCatalog = () => {
-    if (!window.confirm('Ripristinare l\'elenco originale dei ricambi consigliati? Le personalizzazioni verranno azzerate.')) return;
+    if (!confirmResetCatalog) {
+      setConfirmResetCatalog(true);
+      setTimeout(() => setConfirmResetCatalog(false), 4500);
+      return;
+    }
     const def = resetRecommendedPartsCatalogToDefault();
     setCatalog([...def]);
     setSelectedItemIds(new Set());
+    setConfirmResetCatalog(false);
+    setStatusMessage('Elenco consigliato ripristinato ai valori predefiniti.');
   };
 
   const filteredCatalog = useMemo(() => {
@@ -271,6 +281,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
       if (onDraftsGenerated) {
         onDraftsGenerated(res.data);
       }
+      refreshSnapshot();
 
       setStep('review_drafts');
       setStatusMessage(`Create ${res.data.length} bozze ricambi. Imposta i prezzi e pubblica quelle pronte.`);
@@ -320,6 +331,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
         setDrafts((prev) => prev.map((d) => (d.id === res.data!.id ? res.data! : d)));
         setEditingDraft(null);
         setStatusMessage(`Bozza "${res.data.title}" aggiornata.`);
+        refreshSnapshot();
       }
     } catch (e: unknown) {
       console.error('Errore salvataggio bozza:', e);
@@ -330,7 +342,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
 
   const handlePublishSingle = async (draft: InventoryItem) => {
     if (!draft.price || draft.price <= 0) {
-      alert('Imposta un prezzo di vendita valido prima di pubblicare online.');
+      setGenerationError('Imposta un prezzo di vendita valido prima di pubblicare online.');
       openEditDraft(draft);
       return;
     }
@@ -341,7 +353,9 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
       });
       if (res.data) {
         setDrafts((prev) => prev.map((d) => (d.id === res.data!.id ? res.data! : d)));
+        setGenerationError(null);
         setStatusMessage(`Ricambio "${draft.title}" pubblicato online.`);
+        refreshSnapshot();
       }
     } catch (e) {
       console.error('Errore pubblicazione ricambio:', e);
@@ -351,15 +365,19 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   const handlePublishAllReady = async () => {
     const readyItems = drafts.filter((d) => d.status === 'inactive' && Number(d.price) > 0);
     if (readyItems.length === 0) {
-      alert('Nessuna bozza ha un prezzo inserito. Completa i prezzi prima di pubblicare.');
+      setGenerationError('Nessuna bozza ha un prezzo inserito. Completa i prezzi prima di pubblicare.');
       return;
     }
 
-    if (!window.confirm(`Pubblicare online ${readyItems.length} annunci su Autopia Shop?`)) {
+    if (!confirmBatchPublish) {
+      setConfirmBatchPublish(true);
+      setTimeout(() => setConfirmBatchPublish(false), 5000);
       return;
     }
 
+    setConfirmBatchPublish(false);
     setIsPublishingBatch(true);
+    setGenerationError(null);
     setStatusMessage(null);
 
     try {
@@ -373,6 +391,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
         setDrafts(refreshed.data);
       }
 
+      refreshSnapshot();
       setStatusMessage(`Pubblicati ${res.successCount} annunci su Autopia Shop.`);
     } catch (e: unknown) {
       console.error('Errore pubblicazione massiva:', e);
@@ -388,33 +407,33 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
   const publishedCount = drafts.filter((d) => d.status === 'available').length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#10201E]/45 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans select-none">
-      <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-5xl my-4 overflow-hidden shadow-xl flex flex-col max-h-[92vh] text-[#1A2322]">
+    <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5 overflow-y-auto font-sans select-none">
+      <div className="bg-white border border-[#DCE4E2] rounded-2xl w-full max-w-5xl my-4 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] text-[#131C1B]">
         {/* HEADER */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#E2E8E7] bg-[#FAFBFB]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#253331] bg-[#121B1A] text-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0A6256]/40 border border-[#198575]/40 text-[#5EEAD4] flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[#1A2322]">
+              <h2 className="text-base font-bold text-white">
                 Recupero Ricambi da Veicolo
               </h2>
-              <p className="text-xs text-[#5C6B68]">
+              <p className="text-xs text-[#9AB0AC]">
                 {vehicle.make} {vehicle.model} {vehicle.year ? `(${vehicle.year})` : ''}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="inline-flex items-center bg-[#E9EFEE] rounded-xl p-1 text-xs">
+            <div className="inline-flex items-center bg-[#1A2826] border border-[#2A3C39] rounded-xl p-1 text-xs">
               <button
                 type="button"
                 onClick={() => setStep('select_parts')}
                 className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   step === 'select_parts'
-                    ? 'bg-white text-[#074E44] shadow-xs'
-                    : 'text-[#5C6B68] hover:text-[#1A2322]'
+                    ? 'bg-[#074E44] text-white shadow-xs'
+                    : 'text-[#9AB0AC] hover:text-white'
                 }`}
               >
                 1. Selezione ({selectedPartsList.length})
@@ -424,8 +443,8 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
                 onClick={() => setStep('review_drafts')}
                 className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   step === 'review_drafts'
-                    ? 'bg-white text-[#074E44] shadow-xs'
-                    : 'text-[#5C6B68] hover:text-[#1A2322]'
+                    ? 'bg-[#074E44] text-white shadow-xs'
+                    : 'text-[#9AB0AC] hover:text-white'
                 }`}
               >
                 <span>2. Revisione bozze</span>
@@ -438,7 +457,7 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#EDF2F1] transition-colors cursor-pointer"
+              className="p-1.5 text-[#9AB0AC] hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               title="Chiudi"
             >
               <X className="w-4 h-4" />
@@ -515,12 +534,13 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
                     <span>Nuova categoria</span>
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant={confirmResetCatalog ? 'danger' : 'ghost'}
                     size="xs"
                     onClick={handleResetCatalog}
                     title="Ripristina lista predefinita"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
+                    {confirmResetCatalog && <span>Conferma ripristino</span>}
                   </Button>
                 </div>
               </div>
@@ -754,14 +774,18 @@ export const VehiclePartsExtractorModal: React.FC<VehiclePartsExtractorModalProp
 
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="primary"
+                    variant={confirmBatchPublish ? 'success' : 'primary'}
                     size="sm"
                     loading={isPublishingBatch}
                     onClick={handlePublishAllReady}
                     disabled={isPublishingBatch || readyCount === 0}
                   >
                     {!isPublishingBatch && <Globe className="w-3.5 h-3.5" />}
-                    <span>Pubblica pronte ({readyCount})</span>
+                    <span>
+                      {confirmBatchPublish
+                        ? `Conferma pubblicazione (${readyCount})`
+                        : `Pubblica pronte (${readyCount})`}
+                    </span>
                   </Button>
 
                   <Button variant="secondary" size="sm" onClick={() => setStep('select_parts')}>

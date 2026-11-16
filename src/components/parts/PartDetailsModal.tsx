@@ -100,12 +100,12 @@ export const PartDetailsModal: React.FC<PartDetailsModalProps> = ({
   const condMeta = conditionLabels[item.condition];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border border-[#E2E8E7] rounded-2xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl flex flex-col text-[#1A2322] font-sans">
+    <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white border border-[#DCE4E2] rounded-2xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl flex flex-col text-[#131C1B] font-sans">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#EEF2F1] bg-[#FAFBFB]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#253331] bg-[#121B1A] text-white">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] border border-[#C6DFDA] text-[#074E44] flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0A6256]/40 border border-[#198575]/40 text-[#5EEAD4] flex items-center justify-center shrink-0">
               <Package className="w-5 h-5" />
             </div>
             <div className="min-w-0">
@@ -113,17 +113,17 @@ export const PartDetailsModal: React.FC<PartDetailsModalProps> = ({
                 <StatusBadge tone={statusMeta?.tone || 'neutral'}>
                   {statusMeta?.label || item.status}
                 </StatusBadge>
-                <span className="text-[11px] text-[#5C6B68] font-mono tabular-nums">
+                <span className="text-[11px] text-[#9AB0AC] font-mono tabular-nums">
                   ID: {item.id.slice(0, 8)}
                 </span>
               </div>
-              <h2 className="text-base font-bold text-[#162220] mt-0.5 truncate">{item.title}</h2>
+              <h2 className="text-base font-bold text-white mt-0.5 truncate">{item.title}</h2>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] transition-colors cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-[#9AB0AC] hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>

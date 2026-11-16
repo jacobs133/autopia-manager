@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -12,6 +12,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { useAuth, SellerProfile } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import {
   ADMIN_EMAIL,
   fetchAllSellersForAdmin,
@@ -23,6 +24,7 @@ import {
   uiClasses,
   Button,
   KpiCard,
+  SectionHeader,
   StatusBadge,
   AlertBanner,
   LoadingState,
@@ -38,6 +40,7 @@ export const AdminManager: React.FC = () => {
     setAdminSelectedSellerId,
     refreshAvailableSellers,
   } = useAuth();
+  const { refreshSnapshot } = useDashboard();
 
   // CONTROLLO DI SICUREZZA RIGOROSO
   const isStrictlyAuthorized =
@@ -125,25 +128,45 @@ export const AdminManager: React.FC = () => {
       });
       loadAdminData();
       refreshAvailableSellers();
+      refreshSnapshot();
     }
   };
 
+  const distribution = useMemo(() => {
+    const approved = sellers.filter((s) => s.status === 'approved').length;
+    const pending = sellers.filter((s) => s.status === 'pending').length;
+    const suspended = sellers.filter((s) => s.status === 'suspended').length;
+    const rejected = sellers.filter((s) => s.status === 'rejected').length;
+    const total = Math.max(sellers.length, 1);
+    return {
+      approved,
+      pending,
+      suspended,
+      rejected,
+      total: sellers.length,
+      pctApproved: Math.round((approved / total) * 100),
+      pctPending: Math.round((pending / total) * 100),
+      pctSuspended: Math.round((suspended / total) * 100),
+      pctRejected: Math.round((rejected / total) * 100),
+    };
+  }, [sellers]);
+
   if (!isStrictlyAuthorized) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6 bg-[#F5F7F7] font-sans text-[#1A2322]">
+      <div className="flex-1 flex items-center justify-center p-6 bg-[#EEF2F3] font-sans text-[#131C1B]">
         <div className="max-w-md w-full bg-white border border-red-200 rounded-2xl p-7 text-center space-y-4 shadow-sm">
           <div className="w-13 h-13 mx-auto rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-700">
             <Lock className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-[#162220]">Accesso Amministratore Riservato</h2>
-            <p className="text-xs text-[#5C6B68] mt-2 leading-relaxed">
-              Questa sezione è riservata esclusivamente all'account master di sistema (
+            <h2 className="text-lg font-bold text-[#131C1B]">Accesso Amministratore Riservato</h2>
+            <p className="text-xs text-[#566663] mt-2 leading-relaxed">
+              Questa sezione è riservata esclusivamente all&apos;account master di sistema (
               <span className="text-[#074E44] font-mono font-bold">{ADMIN_EMAIL}</span>). Il tuo
               indirizzo email non dispone dei privilegi di amministrazione.
             </p>
           </div>
-          <div className="p-3 bg-[#FAFBFB] rounded-lg border border-[#E2E8E7] text-[11px] text-[#5C6B68] font-mono">
+          <div className="p-3 bg-[#F6F8F8] rounded-lg border border-[#E1E8E6] text-[11px] text-[#566663] font-mono">
             Accesso controllato da Supabase Auth
           </div>
         </div>
@@ -170,39 +193,26 @@ export const AdminManager: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322] overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#EEF2F3] font-sans text-[#131C1B] overflow-y-auto">
       {/* Header Admin Master */}
-      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C6B68]">
-              <StatusBadge tone="brand">
-                <ShieldAlert className="w-3 h-3" />
-                <span>Amministrazione Master</span>
-              </StatusBadge>
-              <span className="font-mono">
-                Operatore: <strong className="text-[#074E44]">{ADMIN_EMAIL}</strong>
-              </span>
-            </div>
-            <h1 className="text-xl font-bold text-[#162220] mt-1">
-              Supervisione Autodemolitori & Piattaforma
-            </h1>
-            <p className="text-xs text-[#5C6B68] mt-0.5">
-              Approvazione accrediti piazzali, supervisione dei magazzini ricambi e gestione centralizzata.
-            </p>
-          </div>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => loadAdminData()}
-            disabled={isLoading}
-            title="Ricarica statistiche e venditori"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
-            <span>Aggiorna</span>
-          </Button>
-        </div>
+      <div className="px-6 py-5 bg-white border-b border-[#DCE4E2] space-y-4 shrink-0">
+        <SectionHeader
+          icon={<ShieldAlert className="w-5 h-5" />}
+          title="Supervisione Autodemolitori & Rete"
+          description={`Console master riservata (${ADMIN_EMAIL}) per accreditamento centri, monitoraggio magazzini e selezione piazzale operativo.`}
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => loadAdminData()}
+              disabled={isLoading}
+              title="Ricarica statistiche e venditori"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
+              <span>Aggiorna</span>
+            </Button>
+          }
+        />
 
         {feedbackMessage && (
           <AlertBanner
@@ -219,18 +229,21 @@ export const AdminManager: React.FC = () => {
             label="Totale autodemolitori"
             value={stats.totalSellers}
             icon={<Building2 className="w-4 h-4" />}
+            onClick={() => setStatusFilter('all')}
           />
           <KpiCard
             label="Piazzali approvati"
             value={stats.approvedSellers}
             icon={<CheckCircle2 className="w-4 h-4" />}
             accent="success"
+            onClick={() => setStatusFilter('approved')}
           />
           <KpiCard
             label="In attesa accredito"
             value={stats.pendingSellers}
             icon={<AlertTriangle className="w-4 h-4" />}
             accent={stats.pendingSellers > 0 ? 'warning' : 'default'}
+            onClick={() => setStatusFilter('pending')}
           />
           <KpiCard
             label="Ricambi su rete"
@@ -242,13 +255,70 @@ export const AdminManager: React.FC = () => {
             label="Catalogo centrale"
             value={stats.totalCatalogVehicles.toLocaleString('it-IT')}
             icon={<Car className="w-4 h-4" />}
+            accent="cyan"
           />
         </div>
+
+        {/* Barra Distribuzione Stato Venditori */}
+        {!isLoading && sellers.length > 0 && (
+          <div className="bg-[#F6F8F8] border border-[#E1E8E6] rounded-xl p-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <span className="font-bold text-[#131C1B]">Distribuzione stati rete Autopia</span>
+              <div className="flex flex-wrap items-center gap-3 text-[#566663] font-mono tabular-nums">
+                <span>
+                  Approvati <strong className="text-emerald-700">{distribution.approved}</strong>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  In attesa <strong className="text-amber-700">{distribution.pending}</strong>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  Sospesi <strong className="text-red-700">{distribution.suspended}</strong>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  Respinti <strong className="text-[#131C1B]">{distribution.rejected}</strong>
+                </span>
+              </div>
+            </div>
+            <div className="h-2 w-full rounded-full overflow-hidden bg-[#DCE4E2] flex">
+              {distribution.approved > 0 && (
+                <div
+                  className="bg-[#0D9488] h-full transition-all"
+                  style={{ width: `${distribution.pctApproved}%` }}
+                  title={`Approvati: ${distribution.approved}`}
+                />
+              )}
+              {distribution.pending > 0 && (
+                <div
+                  className="bg-amber-500 h-full transition-all"
+                  style={{ width: `${distribution.pctPending}%` }}
+                  title={`In attesa: ${distribution.pending}`}
+                />
+              )}
+              {distribution.suspended > 0 && (
+                <div
+                  className="bg-red-500 h-full transition-all"
+                  style={{ width: `${distribution.pctSuspended}%` }}
+                  title={`Sospesi: ${distribution.suspended}`}
+                />
+              )}
+              {distribution.rejected > 0 && (
+                <div
+                  className="bg-slate-400 h-full transition-all"
+                  style={{ width: `${distribution.pctRejected}%` }}
+                  title={`Respinti: ${distribution.rejected}`}
+                />
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Filtri */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <div className="relative md:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#8A9895]" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#7C8E8A]" />
             <input
               type="text"
               value={search}
@@ -309,14 +379,14 @@ export const AdminManager: React.FC = () => {
                         }`}
                       >
                         <td className="py-3 px-4">
-                          <div className="font-bold text-[#1A2322] flex items-center gap-2">
+                          <div className="font-bold text-[#131C1B] flex items-center gap-2">
                             <span>{s.business_name}</span>
                             {isCurrentActiveContext && (
                               <StatusBadge tone="brand">ATTIVO</StatusBadge>
                             )}
                           </div>
-                          <div className="text-[11px] text-[#5C6B68] mt-0.5">
-                            {s.city} ({s.province || 'IT'}) • {s.address || 'Indirizzo non spec.'}
+                          <div className="text-[11px] text-[#566663] mt-0.5">
+                            {s.city} ({s.province || 'IT'}) · {s.address || 'Indirizzo non spec.'}
                           </div>
                         </td>
 
@@ -327,7 +397,7 @@ export const AdminManager: React.FC = () => {
                         <td className="py-3 px-4 text-[#3F4E4B]">
                           <div>{s.email || '—'}</div>
                           {s.phone && (
-                            <div className="text-[11px] text-[#5C6B68] font-mono">{s.phone}</div>
+                            <div className="text-[11px] text-[#566663] font-mono">{s.phone}</div>
                           )}
                         </td>
 
@@ -337,19 +407,22 @@ export const AdminManager: React.FC = () => {
                           </StatusBadge>
                         </td>
 
-                        <td className="py-3 px-4 text-[#5C6B68] text-[11px] tabular-nums">
+                        <td className="py-3 px-4 text-[#566663] text-[11px] font-mono tabular-nums">
                           {s.created_at ? new Date(s.created_at).toLocaleDateString('it-IT') : '—'}
                         </td>
 
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <Button
-                              variant={isCurrentActiveContext ? 'primary' : 'secondary'}
+                              variant={isCurrentActiveContext ? 'dark' : 'secondary'}
                               size="xs"
-                              onClick={() => setAdminSelectedSellerId(s.id)}
+                              onClick={() => {
+                                setAdminSelectedSellerId(s.id);
+                                refreshSnapshot();
+                              }}
                               title="Seleziona come piazzale corrente per gestire veicoli e ricambi"
                             >
-                              {isCurrentActiveContext ? 'Selezionato' : 'Gestisci Piazzale'}
+                              {isCurrentActiveContext ? 'Piazzale Attivo' : 'Gestisci Piazzale'}
                             </Button>
 
                             {s.status !== 'approved' && (
@@ -401,16 +474,16 @@ export const AdminManager: React.FC = () => {
         )}
 
         {/* Note Sicurezza */}
-        <div className={`${uiClasses.card} p-4 text-xs text-[#5C6B68] space-y-1.5`}>
-          <div className="font-bold text-[#162220] flex items-center gap-1.5">
+        <div className={`${uiClasses.card} p-4 text-xs text-[#566663] space-y-1.5`}>
+          <div className="font-bold text-[#131C1B] flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-[#074E44]" />
             <span>Politiche di Sicurezza Amministratore Autopia</span>
           </div>
           <p className="text-[11px] leading-relaxed">
-            Tutte le azioni di revisione venditore aggiornano lo stato ufficiale dell'account su
-            Supabase e sincronizzano l'accesso delle installazioni desktop. Solo l'account{' '}
-            <code className="text-[#074E44] font-semibold">{ADMIN_EMAIL}</code> può operare con
-            privilegi master.
+            Tutte le azioni di revisione venditore aggiornano lo stato ufficiale dell&apos;account su
+            Supabase e sincronizzano l&apos;accesso delle installazioni desktop. Solo l&apos;account{' '}
+            <code className="text-[#074E44] font-semibold font-mono">{ADMIN_EMAIL}</code> può
+            operare con privilegi master.
           </p>
         </div>
       </div>

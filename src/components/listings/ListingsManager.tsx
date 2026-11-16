@@ -13,8 +13,10 @@ import {
   TrendingUp,
   DollarSign,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import type { InventoryItem, InventoryFilters } from '../../types/inventory';
 import {
   fetchSellerInventory,
@@ -26,6 +28,7 @@ import {
   uiClasses,
   Button,
   KpiCard,
+  SectionHeader,
   StatusBadge,
   AlertBanner,
   LoadingState,
@@ -34,6 +37,7 @@ import {
 
 export const ListingsManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile } = useAuth();
+  const { refreshSnapshot } = useDashboard();
   const currentSeller = effectiveSellerProfile || sellerProfile;
   const sellerId = currentSeller?.id;
 
@@ -113,6 +117,7 @@ export const ListingsManager: React.FC = () => {
         setItems((prev) =>
           prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i))
         );
+        refreshSnapshot();
         setActionFeedback({
           type: 'success',
           message:
@@ -146,6 +151,7 @@ export const ListingsManager: React.FC = () => {
       } else {
         setSaleItem(null);
         loadListings();
+        refreshSnapshot();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Eccezione scarico';
@@ -160,52 +166,39 @@ export const ListingsManager: React.FC = () => {
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322]">
+    <div className="flex-1 flex flex-col min-h-0 bg-[#EEF2F3] font-sans text-[#131C1B]">
       {/* Intestazione */}
-      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
-              <span className="font-semibold text-[#074E44]">
-                {currentSeller?.business_name || 'Autodemolitore'}
-              </span>
-              <span>•</span>
-              <span className="inline-flex items-center gap-1">
-                <Globe className="w-3 h-3 text-[#0D9488]" />
-                <span>Autopia Shop Sync</span>
-              </span>
-            </div>
-            <h1 className="text-xl font-bold text-[#162220] mt-0.5 flex items-center gap-2">
-              <Store className="w-5 h-5 text-[#074E44]" />
-              <span>Annunci & Visibilità Online</span>
-            </h1>
-            <p className="text-xs text-[#5C6B68] mt-0.5">
-              Controlla le inserzioni pubblicate su <strong className="text-[#074E44]">autopiashop.it</strong> e registra eventuali vendite al banco.
-            </p>
-          </div>
+      <div className="px-6 py-5 bg-white border-b border-[#DCE4E2] space-y-4 shrink-0">
+        <SectionHeader
+          icon={<Store className="w-5 h-5" />}
+          title="Annunci & Visibilità Autopia Shop"
+          description="Controlla gli annunci pubblicati su autopiashop.it, verifica la coerenza giacenze e registra scarichi al banco."
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => openExternalUrl('https://autopiashop.it')}
+              >
+                <span>Apri Autopia Shop</span>
+                <ExternalLink className="w-3.5 h-3.5 text-[#074E44]" />
+              </Button>
 
-          <div className="flex items-center gap-2.5">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => openExternalUrl('https://autopiashop.it')}
-            >
-              <span>Apri Autopia Shop</span>
-              <ExternalLink className="w-3.5 h-3.5 text-[#074E44]" />
-            </Button>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => loadListings()}
-              disabled={isLoading}
-              title="Ricarica annunci"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`} />
-              <span>Aggiorna</span>
-            </Button>
-          </div>
-        </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => loadListings()}
+                disabled={isLoading}
+                title="Ricarica annunci"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#074E44]' : ''}`}
+                />
+                <span>Aggiorna</span>
+              </Button>
+            </>
+          }
+        />
 
         {/* Schede KPI */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -300,11 +293,16 @@ export const ListingsManager: React.FC = () => {
             {items.map((item) => {
               const isOnline = item.status === 'available';
               const isToggling = togglingId === item.id;
+              const hasStockRisk = isOnline && (item.quantity <= 0 || Number(item.price) <= 0);
 
               return (
                 <div
                   key={item.id}
-                  className="bg-white border border-[#E2E8E7] hover:border-[#C6DFDA] rounded-xl p-4 flex flex-col justify-between space-y-4 transition-colors shadow-[0_1px_2px_rgba(7,78,68,0.03)]"
+                  className={`bg-white border rounded-xl p-4 flex flex-col justify-between space-y-4 transition-colors shadow-[0_1px_2px_rgba(15,28,26,0.04)] ${
+                    hasStockRisk
+                      ? 'border-amber-300'
+                      : 'border-[#DCE4E2] hover:border-[#074E44]/40'
+                  }`}
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
@@ -316,27 +314,38 @@ export const ListingsManager: React.FC = () => {
                                 isOnline ? 'bg-emerald-600' : 'bg-slate-400'
                               }`}
                             />
-                            <span>{isOnline ? 'Online su Autopia' : item.status.toUpperCase()}</span>
+                            <span>{isOnline ? 'Online su Shop' : item.status.toUpperCase()}</span>
                           </StatusBadge>
 
+                          {hasStockRisk && (
+                            <StatusBadge tone="warning">
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>Verifica giacenza</span>
+                            </StatusBadge>
+                          )}
+
                           {item.oem_code && (
-                            <span className="font-mono text-[11px] text-[#5C6B68] bg-[#FAFBFB] px-2 py-0.5 rounded border border-[#E2E8E7]">
-                              OEM: {item.oem_code}
+                            <span className="font-mono text-[11px] text-[#566663]">
+                              · OEM {item.oem_code}
                             </span>
                           )}
                         </div>
 
-                        <h3 className="text-sm font-bold text-[#162220] mt-2 line-clamp-1">
+                        <h3 className="text-sm font-bold text-[#131C1B] mt-2 line-clamp-1">
                           {item.title}
                         </h3>
                       </div>
 
-                      <div className="text-right shrink-0 tabular-nums">
+                      <div className="text-right shrink-0 tabular-nums font-mono">
                         <div className="text-base font-bold text-[#074E44]">
                           € {Number(item.price).toFixed(2)}
                         </div>
-                        <div className="text-[11px] text-[#5C6B68]">
-                          Giacenza: <strong className="text-[#1A2322]">{item.quantity}</strong> pz
+                        <div
+                          className={`text-[11px] ${
+                            item.quantity <= 0 ? 'text-red-700 font-bold' : 'text-[#566663]'
+                          }`}
+                        >
+                          {item.quantity} pz disp.
                         </div>
                       </div>
                     </div>

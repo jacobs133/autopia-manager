@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   KeyRound,
   Store,
-  Info,
   Building2,
   Unplug,
   Clock,
@@ -27,6 +26,7 @@ import {
 } from 'lucide-react';
 import { openExternalUrl, copyToClipboard as copyExternalUrl } from '../../services/externalLinkService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import type {
   EbayConnectionInfo,
   EbayListingItem,
@@ -51,6 +51,8 @@ import type { InventoryItem } from '../../types/inventory';
 import {
   uiClasses,
   Button,
+  KpiCard,
+  SectionHeader,
   StatusBadge,
   AlertBanner,
   EmptyState,
@@ -60,6 +62,7 @@ type EbayTab = 'oauth' | 'listings' | 'orders';
 
 export const EbayManager: React.FC = () => {
   const { sellerProfile, effectiveSellerProfile, isAdmin } = useAuth();
+  const { refreshSnapshot } = useDashboard();
   const activeSeller = effectiveSellerProfile || sellerProfile;
 
   const [activeTab, setActiveTab] = useState<EbayTab>('oauth');
@@ -134,7 +137,7 @@ export const EbayManager: React.FC = () => {
       setConnectionInfo(info);
       if (info.isConnected) {
         setPendingAuthUrl(null);
-        setActionNotice(`Account eBay Sandbox "${info.ebayUsername || 'Collegato'}" verificato e attivo!`);
+        setActionNotice(`Account eBay Sandbox "${info.ebayUsername || 'Collegato'}" verificato e attivo.`);
         setActionError(null);
       } else if (!isSilent) {
         if (info.status === 'error') {
@@ -187,8 +190,9 @@ export const EbayManager: React.FC = () => {
           clearInterval(timer);
           setConnectionInfo(status);
           setPendingAuthUrl(null);
-          setActionNotice('Account eBay Sandbox rilevato e collegato con successo!');
+          setActionNotice('Account eBay Sandbox rilevato e collegato con successo.');
           setActionError(null);
+          refreshSnapshot();
         }
       } catch {
         // Ignora errori transitori
@@ -199,7 +203,7 @@ export const EbayManager: React.FC = () => {
     }, 2500);
 
     return () => clearInterval(timer);
-  }, [pendingAuthUrl, connectionInfo?.isConnected, activeSeller?.id]);
+  }, [pendingAuthUrl, connectionInfo?.isConnected, activeSeller?.id, refreshSnapshot]);
 
   const loadListingsAndWarehouse = useCallback(async () => {
     if (!activeSeller?.id) return;
@@ -288,6 +292,7 @@ export const EbayManager: React.FC = () => {
     } else {
       setActionNotice('Account eBay scollegato con successo.');
       await loadStatus();
+      refreshSnapshot();
     }
     setIsDisconnecting(false);
     setShowDisconnectConfirm(false);
@@ -321,9 +326,10 @@ export const EbayManager: React.FC = () => {
     if (!res.success) {
       setActionError(res.error || 'Errore durante la pubblicazione del ricambio su eBay.');
     } else {
-      setActionNotice(res.message || `Ricambio ${sku} pubblicato con successo su eBay Sandbox!`);
+      setActionNotice(res.message || `Ricambio ${sku} pubblicato con successo su eBay Sandbox.`);
       setSelectedInventoryItem(null);
       await loadListingsAndWarehouse();
+      refreshSnapshot();
     }
     setIsPublishing(false);
   };
@@ -343,6 +349,7 @@ export const EbayManager: React.FC = () => {
     } else {
       setActionNotice(res.message || `Giacenza per ${listing.sku} aggiornata a ${newQuantity} pezzi.`);
       await loadListingsAndWarehouse();
+      refreshSnapshot();
     }
     setUpdatingSku(null);
   };
@@ -357,9 +364,10 @@ export const EbayManager: React.FC = () => {
       setActionError(res.error || 'Impossibile scaricare gli ordini da eBay Fulfillment API.');
     } else {
       setActionNotice(
-        res.message || `Scaricati e sincronizzati ${res.orders.length} ordini eBay Sandbox!`
+        res.message || `Scaricati e sincronizzati ${res.orders.length} ordini eBay Sandbox.`
       );
       await loadOrders();
+      refreshSnapshot();
     }
     setIsSyncingOrders(false);
   };
@@ -379,8 +387,9 @@ export const EbayManager: React.FC = () => {
     if (!res.success) {
       setActionError(res.error || 'Errore invio tracking a eBay.');
     } else {
-      setActionNotice(res.message || `Ordine ${ebayOrderId} contrassegnato come spedito su eBay!`);
+      setActionNotice(res.message || `Ordine ${ebayOrderId} contrassegnato come spedito su eBay.`);
       await loadOrders();
+      refreshSnapshot();
     }
     setFulfillingOrderId(null);
   };
@@ -389,94 +398,122 @@ export const EbayManager: React.FC = () => {
   const backendUrl = getEbayOAuthBackendBaseUrl();
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#F5F7F7] font-sans text-[#1A2322] overflow-y-auto select-text">
-      {/* Header */}
-      <div className="px-6 py-5 bg-white border-b border-[#E2E8E7] space-y-4 shrink-0">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-[#5C6B68]">
-              <span className="font-semibold text-[#074E44]">
-                {activeSeller?.business_name || 'Autodemolitore'}
-              </span>
-              <span>•</span>
-              <StatusBadge tone="brand">
-                <Globe className="w-3 h-3" />
-                <span>eBay Sandbox</span>
-              </StatusBadge>
-            </div>
-            <h1 className="text-xl font-bold text-[#162220] mt-1">Canale di Vendita eBay</h1>
-            <p className="text-xs text-[#5C6B68] mt-0.5">
-              Collegamento OAuth 2.0 protetto, pubblicazione inserzioni ricambi, sincronizzazione giacenze ed evasione ordini.
-            </p>
-          </div>
+    <div className="flex-1 flex flex-col min-h-0 bg-[#EEF2F3] font-sans text-[#131C1B] overflow-y-auto select-text">
+      {/* Header & Overview Canale */}
+      <div className="px-6 py-5 bg-white border-b border-[#DCE4E2] space-y-4 shrink-0">
+        <SectionHeader
+          icon={<Globe className="w-5 h-5" />}
+          title="Canale di Vendita eBay"
+          description={`Collegamento OAuth 2.0 protetto per ${
+            activeSeller?.business_name || 'Autodemolizione'
+          }, pubblicazione annunci, sincronizzazione giacenze ed evasione ordini.`}
+          actions={
+            <>
+              {isAdmin && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleRunDiagnostics}
+                  loading={isDiagnosing}
+                  title="Esegui diagnostica completa end-to-end (Riservato Admin)"
+                >
+                  {!isDiagnosing && <Wrench className="w-3.5 h-3.5 text-[#074E44]" />}
+                  <span>Diagnostica Canale</span>
+                </Button>
+              )}
 
-          <div className="flex items-center gap-2 self-start md:self-auto">
-            {isAdmin && (
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={handleRunDiagnostics}
-                loading={isDiagnosing}
-                title="Esegui diagnostica completa end-to-end (Riservato Admin)"
+                onClick={() => {
+                  if (activeTab === 'oauth') loadStatus();
+                  else if (activeTab === 'listings') loadListingsAndWarehouse();
+                  else if (activeTab === 'orders') loadOrders();
+                }}
+                disabled={isLoading || isInitiating || isLoadingListings || isLoadingOrders}
+                title="Aggiorna dati"
               >
-                {!isDiagnosing && <Wrench className="w-3.5 h-3.5 text-[#074E44]" />}
-                <span>Diagnostica Canale</span>
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    isLoading || isLoadingListings || isLoadingOrders
+                      ? 'animate-spin text-[#074E44]'
+                      : ''
+                  }`}
+                />
+                <span>Aggiorna</span>
               </Button>
-            )}
+            </>
+          }
+        />
 
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                if (activeTab === 'oauth') loadStatus();
-                else if (activeTab === 'listings') loadListingsAndWarehouse();
-                else if (activeTab === 'orders') loadOrders();
-              }}
-              disabled={isLoading || isInitiating || isLoadingListings || isLoadingOrders}
-              title="Aggiorna dati"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  isLoading || isLoadingListings || isLoadingOrders
-                    ? 'animate-spin text-[#074E44]'
-                    : ''
-                }`}
-              />
-              <span>Aggiorna</span>
-            </Button>
-          </div>
+        {/* Schede Stato Canale */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiCard
+            label="Stato connessione"
+            value={isLoading ? 'Verifica...' : isConnected ? 'Collegato' : 'Disconnesso'}
+            hint={isConnected ? 'Token AES-256-GCM attivo' : 'Autorizzazione richiesta'}
+            icon={<KeyRound className="w-4 h-4" />}
+            accent={isConnected ? 'success' : 'warning'}
+            onClick={() => setActiveTab('oauth')}
+          />
+          <KpiCard
+            label="Account collegato"
+            value={connectionInfo?.ebayUsername || 'Non associato'}
+            hint={
+              connectionInfo?.tokenExpiresAt
+                ? `Scade ${new Date(connectionInfo.tokenExpiresAt).toLocaleDateString('it-IT')}`
+                : 'eBay OAuth 2.0'
+            }
+            icon={<Globe className="w-4 h-4" />}
+            accent="brand"
+          />
+          <KpiCard
+            label="Inserzioni sincronizzate"
+            value={listings.length}
+            hint="Annunci attivi su eBay"
+            icon={<Store className="w-4 h-4" />}
+            accent="cyan"
+            onClick={() => setActiveTab('listings')}
+          />
+          <KpiCard
+            label="Ordini eBay"
+            value={orders.length}
+            hint="Ambiente eBay Sandbox"
+            icon={<ShoppingBag className="w-4 h-4" />}
+            onClick={() => setActiveTab('orders')}
+          />
         </div>
 
         {/* Navigazione Schede */}
-        <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EEF2F1] border border-[#DCE5E3]">
+        <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#E9EFEE] border border-[#DCE4E2]">
           <button
             type="button"
             onClick={() => setActiveTab('oauth')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'oauth'
-                ? 'bg-white text-[#074E44] shadow-xs'
-                : 'text-[#5C6B68] hover:text-[#1A2322]'
+                ? 'bg-[#121B1A] text-white shadow-xs'
+                : 'text-[#566663] hover:text-[#131C1B]'
             }`}
           >
             <KeyRound className="w-3.5 h-3.5" />
             <span>Collegamento Account (OAuth)</span>
-            {isConnected && <span className="w-2 h-2 rounded-full bg-emerald-600" />}
+            {isConnected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('listings')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'listings'
-                ? 'bg-white text-[#074E44] shadow-xs'
-                : 'text-[#5C6B68] hover:text-[#1A2322]'
+                ? 'bg-[#121B1A] text-white shadow-xs'
+                : 'text-[#566663] hover:text-[#131C1B]'
             }`}
           >
             <Store className="w-3.5 h-3.5" />
-            <span>Annunci & Giacenze eBay</span>
+            <span>Annunci &amp; Giacenze eBay</span>
             {listings.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#EAF3F1] text-[#074E44] font-mono tabular-nums">
-                {listings.length}
+              <span className="font-mono tabular-nums text-[10px] opacity-80">
+                ({listings.length})
               </span>
             )}
           </button>
@@ -484,17 +521,17 @@ export const EbayManager: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'orders'
-                ? 'bg-white text-[#074E44] shadow-xs'
-                : 'text-[#5C6B68] hover:text-[#1A2322]'
+                ? 'bg-[#121B1A] text-white shadow-xs'
+                : 'text-[#566663] hover:text-[#131C1B]'
             }`}
           >
             <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Ordini eBay & Evasione</span>
+            <span>Ordini eBay &amp; Evasione</span>
             {orders.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono tabular-nums">
-                {orders.length}
+              <span className="font-mono tabular-nums text-[10px] opacity-80">
+                ({orders.length})
               </span>
             )}
           </button>
@@ -590,7 +627,7 @@ export const EbayManager: React.FC = () => {
                         ? 'bg-amber-50 border-amber-200 text-amber-700'
                         : connectionInfo?.status === 'error'
                         ? 'bg-red-50 border-red-200 text-red-700'
-                        : 'bg-[#F5F7F7] border-[#E2E8E7] text-[#5C6B68]'
+                        : 'bg-[#F6F8F8] border-[#DCE4E2] text-[#566663]'
                     }`}
                   >
                     {isLoading ? (
@@ -608,7 +645,7 @@ export const EbayManager: React.FC = () => {
 
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-bold text-[#162220]">
+                      <h2 className="text-lg font-bold text-[#131C1B]">
                         {isLoading
                           ? 'Verifica Canale eBay in corso...'
                           : isConnected
@@ -623,7 +660,7 @@ export const EbayManager: React.FC = () => {
                       {isLoading ? (
                         <StatusBadge tone="brand">Verifica in corso</StatusBadge>
                       ) : isConnected ? (
-                        <StatusBadge tone="success">Attivo & Autorizzato</StatusBadge>
+                        <StatusBadge tone="success">Attivo &amp; Autorizzato</StatusBadge>
                       ) : pendingAuthUrl ? (
                         <StatusBadge tone="warning">In attesa di autorizzazione</StatusBadge>
                       ) : connectionInfo?.status === 'error' ? (
@@ -635,7 +672,7 @@ export const EbayManager: React.FC = () => {
                       )}
                     </div>
 
-                    <p className="text-xs text-[#5C6B68] max-w-2xl leading-relaxed">
+                    <p className="text-xs text-[#566663] max-w-2xl leading-relaxed">
                       {isConnected
                         ? `L'account eBay Sandbox "${
                             connectionInfo?.ebayUsername || 'Autodemolitore'
@@ -655,17 +692,18 @@ export const EbayManager: React.FC = () => {
                     </p>
 
                     {isConnected && connectionInfo?.tokenExpiresAt && (
-                      <div className="pt-1 flex flex-wrap items-center gap-3 text-[11px] text-[#5C6B68] tabular-nums">
+                      <div className="pt-1 flex flex-wrap items-center gap-3 text-[11px] text-[#566663] tabular-nums">
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-[#8A9895]" />
+                          <Clock className="w-3.5 h-3.5 text-[#7C8E8A]" />
                           <span>
                             Scadenza sessione:{' '}
                             {new Date(connectionInfo.tokenExpiresAt).toLocaleDateString('it-IT')}{' '}
                             {new Date(connectionInfo.tokenExpiresAt).toLocaleTimeString('it-IT')}
                           </span>
                         </span>
+                        <span aria-hidden="true">·</span>
                         <span className="text-emerald-700 font-semibold">
-                          • Refresh automatico abilitato
+                          Refresh automatico abilitato
                         </span>
                       </div>
                     )}
@@ -712,7 +750,7 @@ export const EbayManager: React.FC = () => {
                       </div>
                       <p className="text-[11px] text-amber-800 leading-relaxed max-w-xl">
                         La sessione di accesso con eBay Sandbox è pronta. Accedi con il tuo account
-                        sviluppatore eBay e clicca su <strong>"Agree"</strong> per completare il
+                        sviluppatore eBay e clicca su <strong>&ldquo;Agree&rdquo;</strong> per completare il
                         collegamento.
                       </p>
                     </div>
@@ -774,10 +812,10 @@ export const EbayManager: React.FC = () => {
                   </div>
 
                   <div className="pt-1">
-                    <div className="text-[10px] text-[#5C6B68] uppercase font-semibold">
+                    <div className="text-[10px] text-[#566663] uppercase font-semibold">
                       URL di autorizzazione generato:
                     </div>
-                    <div className="mt-1 p-2 bg-white rounded-lg border border-[#E2E8E7] font-mono text-[11px] text-[#3F4E4B] break-all select-all flex items-center justify-between gap-2">
+                    <div className="mt-1 p-2 bg-white rounded-lg border border-[#DCE4E2] font-mono text-[11px] text-[#3F4E4B] break-all select-all flex items-center justify-between gap-2">
                       <span className="truncate">{pendingAuthUrl}</span>
                       <button
                         type="button"
@@ -796,7 +834,7 @@ export const EbayManager: React.FC = () => {
               )}
 
               {/* Dettagli Tecnico-Architetturali */}
-              <div className="mt-6 pt-4 border-t border-[#EEF2F1] flex flex-wrap items-center justify-between gap-2 text-xs text-[#5C6B68]">
+              <div className="mt-6 pt-4 border-t border-[#EEF2F1] flex flex-wrap items-center justify-between gap-2 text-xs text-[#566663]">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-[#0D9488]" />
                   <span>
@@ -813,27 +851,27 @@ export const EbayManager: React.FC = () => {
               </div>
 
               {showArchitectureDetails && (
-                <div className="mt-4 p-4 rounded-xl bg-[#FAFBFB] border border-[#E2E8E7] text-xs text-[#2E3C3A]">
+                <div className="mt-4 p-4 rounded-xl bg-[#F6F8F8] border border-[#E1E8E6] text-xs text-[#2E3C3A]">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
                     <div>
-                      <span className="text-[#5C6B68] block mb-0.5">Endpoint Backend:</span>
+                      <span className="text-[#566663] block mb-0.5">Endpoint Backend:</span>
                       <code className="text-[#074E44] font-mono font-semibold">{backendUrl}</code>
                     </div>
                     <div>
-                      <span className="text-[#5C6B68] block mb-0.5">RuName eBay:</span>
-                      <code className="text-[#1A2322] font-mono">
+                      <span className="text-[#566663] block mb-0.5">RuName eBay:</span>
+                      <code className="text-[#131C1B] font-mono">
                         Configurato su developer.ebay.com (Sandbox)
                       </code>
                     </div>
                     <div>
-                      <span className="text-[#5C6B68] block mb-0.5">Cifratura Token:</span>
+                      <span className="text-[#566663] block mb-0.5">Cifratura Token:</span>
                       <span className="text-emerald-700 font-mono font-semibold">
                         AES-256-GCM (AuthTag 128-bit)
                       </span>
                     </div>
                     <div>
-                      <span className="text-[#5C6B68] block mb-0.5">Permessi Richiesti:</span>
-                      <span className="text-[#1A2322] font-mono">
+                      <span className="text-[#566663] block mb-0.5">Permessi Richiesti:</span>
+                      <span className="text-[#131C1B] font-mono">
                         sell.inventory, sell.account, sell.fulfillment
                       </span>
                     </div>
@@ -854,11 +892,11 @@ export const EbayManager: React.FC = () => {
                     <Package className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-[#162220]">
+                    <h2 className="text-base font-bold text-[#131C1B]">
                       Pubblica Ricambio da Magazzino su eBay Sandbox
                     </h2>
-                    <p className="text-xs text-[#5C6B68]">
-                      Seleziona un articolo dal magazzino per generare l'inserzione a prezzo fisso.
+                    <p className="text-xs text-[#566663]">
+                      Seleziona un articolo dal magazzino per generare l&apos;inserzione a prezzo fisso.
                     </p>
                   </div>
                 </div>
@@ -877,7 +915,7 @@ export const EbayManager: React.FC = () => {
               {selectedInventoryItem ? (
                 <form
                   onSubmit={handlePublish}
-                  className="bg-[#FAFBFB] p-4 rounded-xl border border-[#C6DFDA] space-y-4"
+                  className="bg-[#F6F8F8] p-4 rounded-xl border border-[#C6DFDA] space-y-4"
                 >
                   <div className="text-xs font-bold text-[#074E44] flex items-center gap-2">
                     <Sparkles className="w-4 h-4" />
@@ -925,13 +963,13 @@ export const EbayManager: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#E2E8E7]">
-                    <div className="text-[11px] text-[#5C6B68]">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#DCE4E2]">
+                    <div className="text-[11px] text-[#566663]">
                       Codice OEM:{' '}
-                      <span className="text-[#1A2322] font-mono font-semibold">
+                      <span className="text-[#131C1B] font-mono font-semibold">
                         {selectedInventoryItem.oem_code || 'Non specificato'}
                       </span>{' '}
-                      • SKU:{' '}
+                      <span aria-hidden="true">·</span> SKU:{' '}
                       <span className="text-[#074E44] font-mono font-semibold">
                         {publishForm.sku}
                       </span>
@@ -947,37 +985,41 @@ export const EbayManager: React.FC = () => {
                 </form>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-[#5C6B68]">
+                  <div className="text-xs font-medium text-[#566663]">
                     Ricambi disponibili a magazzino ({warehouseItems.length}):
                   </div>
                   {warehouseItems.length === 0 ? (
-                    <div className="p-4 bg-[#FAFBFB] rounded-xl border border-[#E2E8E7] text-center text-xs text-[#5C6B68]">
-                      Nessun ricambio trovato in magazzino. Aggiungi ricambi nella sezione "Magazzino Ricambi" per pubblicarli su eBay.
+                    <div className="p-4 bg-[#F6F8F8] rounded-xl border border-[#E1E8E6] text-center text-xs text-[#566663]">
+                      Nessun ricambio trovato in magazzino. Aggiungi ricambi nella sezione &ldquo;Magazzino Ricambi&rdquo; per pubblicarli su eBay.
                     </div>
                   ) : (
-                    <div className="max-h-56 overflow-y-auto rounded-xl border border-[#E2E8E7] divide-y divide-[#EEF2F1] bg-white">
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-[#DCE4E2] divide-y divide-[#EEF2F1] bg-white">
                       {warehouseItems.slice(0, 8).map((item) => (
                         <div
                           key={item.id}
                           className="p-3 hover:bg-[#F7FAF9] flex items-center justify-between gap-3 text-xs transition-colors"
                         >
                           <div className="min-w-0">
-                            <div className="font-semibold text-[#1A2322] truncate">{item.title}</div>
-                            <div className="text-[11px] text-[#5C6B68] flex flex-wrap items-center gap-3 mt-0.5 tabular-nums">
+                            <div className="font-semibold text-[#131C1B] truncate">{item.title}</div>
+                            <div className="text-[11px] text-[#566663] flex flex-wrap items-center gap-2 mt-0.5 tabular-nums">
                               <span>
                                 Prezzo:{' '}
-                                <strong className="text-[#074E44]">
+                                <strong className="text-[#074E44] font-mono">
                                   € {item.price?.toFixed(2) || '0.00'}
                                 </strong>
                               </span>
+                              <span aria-hidden="true">·</span>
                               <span>
                                 Giacenza:{' '}
-                                <strong className="text-[#1A2322]">{item.quantity} pz</strong>
+                                <strong className="text-[#131C1B] font-mono">{item.quantity} pz</strong>
                               </span>
                               {item.oem_code && (
-                                <span>
-                                  OEM: <code className="font-mono">{item.oem_code}</code>
-                                </span>
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span>
+                                    OEM <code className="font-mono">{item.oem_code}</code>
+                                  </span>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1011,11 +1053,11 @@ export const EbayManager: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Store className="w-5 h-5 text-[#074E44]" />
-                  <h2 className="text-base font-bold text-[#162220]">
-                    Inserzioni eBay Attive & Sincronizzazione Giacenze
+                  <h2 className="text-base font-bold text-[#131C1B]">
+                    Inserzioni eBay Attive &amp; Sincronizzazione Giacenze
                   </h2>
                 </div>
-                <span className="text-xs text-[#5C6B68] font-mono tabular-nums">
+                <span className="text-xs text-[#566663] font-mono tabular-nums">
                   {listings.length} inserzioni
                 </span>
               </div>
@@ -1046,19 +1088,19 @@ export const EbayManager: React.FC = () => {
                             <td className="py-3 px-3 font-mono font-semibold text-[#074E44]">
                               <div>{l.sku}</div>
                               {l.ebay_item_id && (
-                                <div className="text-[10px] text-[#5C6B68]">ID: {l.ebay_item_id}</div>
+                                <div className="text-[10px] text-[#566663]">ID: {l.ebay_item_id}</div>
                               )}
                             </td>
-                            <td className="py-3 px-3 font-medium text-[#1A2322] max-w-xs truncate">
+                            <td className="py-3 px-3 font-medium text-[#131C1B] max-w-xs truncate">
                               {l.title}
                             </td>
-                            <td className="py-3 px-3 font-bold text-[#074E44] tabular-nums">
+                            <td className="py-3 px-3 font-bold font-mono text-[#074E44] tabular-nums">
                               € {l.price.toFixed(2)}
                             </td>
                             <td className="py-3 px-3 tabular-nums">
                               <span
                                 className={`font-mono font-bold ${
-                                  l.quantity > 0 ? 'text-[#1A2322]' : 'text-red-700'
+                                  l.quantity > 0 ? 'text-[#131C1B]' : 'text-red-700'
                                 }`}
                               >
                                 {l.quantity} pz
@@ -1126,11 +1168,11 @@ export const EbayManager: React.FC = () => {
             <div className={`${uiClasses.card} p-6 space-y-4`}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-bold text-[#162220] flex items-center gap-2">
+                  <h2 className="text-base font-bold text-[#131C1B] flex items-center gap-2">
                     <ShoppingBag className="w-5 h-5 text-[#074E44]" />
-                    <span>Ricezione Ordini eBay Sandbox & Scarico Magazzino</span>
+                    <span>Ricezione Ordini eBay Sandbox &amp; Scarico Magazzino</span>
                   </h2>
-                  <p className="text-xs text-[#5C6B68] mt-0.5">
+                  <p className="text-xs text-[#566663] mt-0.5">
                     Scarica gli ordini confermati su eBay Sandbox. Lo scarico scala automaticamente la disponibilità in magazzino.
                   </p>
                 </div>
@@ -1165,9 +1207,9 @@ export const EbayManager: React.FC = () => {
                     return (
                       <div
                         key={order.id}
-                        className="p-4 bg-[#FAFBFB] rounded-xl border border-[#E2E8E7] space-y-3"
+                        className="p-4 bg-[#F6F8F8] rounded-xl border border-[#E1E8E6] space-y-3"
                       >
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#E2E8E7]">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2.5 border-b border-[#DCE4E2]">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-[#074E44] text-xs">
                               Ordine #{order.ebay_order_id}
@@ -1175,16 +1217,16 @@ export const EbayManager: React.FC = () => {
                             <StatusBadge
                               tone={order.order_status === 'SHIPPED' ? 'brand' : 'success'}
                             >
-                              {order.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato • Da Spedire'}
+                              {order.order_status === 'SHIPPED' ? 'Spedito' : 'Pagato · Da Spedire'}
                             </StatusBadge>
                           </div>
 
-                          <div className="text-xs text-[#5C6B68] tabular-nums">
+                          <div className="text-xs text-[#566663] tabular-nums">
                             Data:{' '}
-                            <span className="text-[#1A2322] font-medium">
+                            <span className="text-[#131C1B] font-medium">
                               {new Date(order.creation_date).toLocaleDateString('it-IT')}
                             </span>{' '}
-                            • Totale:{' '}
+                            <span aria-hidden="true">·</span> Totale:{' '}
                             <strong className="text-[#074E44] font-mono text-sm">
                               € {order.total_price.toFixed(2)} {order.currency}
                             </strong>
@@ -1192,23 +1234,23 @@ export const EbayManager: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                          <div className="bg-white p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-[#5C6B68] text-[11px] font-semibold flex items-center gap-1">
+                          <div className="bg-white p-3 rounded-lg border border-[#DCE4E2] space-y-1">
+                            <div className="text-[#566663] text-[11px] font-semibold flex items-center gap-1">
                               <Truck className="w-3.5 h-3.5 text-[#074E44]" />
                               <span>Indirizzo di Spedizione</span>
                             </div>
-                            <div className="font-bold text-[#1A2322]">
+                            <div className="font-bold text-[#131C1B]">
                               {order.buyer_name} ({order.buyer_username})
                             </div>
-                            <div className="text-[#5C6B68] text-[11px]">
+                            <div className="text-[#566663] text-[11px]">
                               {order.shipping_address?.addressLine1 || 'Indirizzo registrato su eBay'},{' '}
                               {order.shipping_address?.postalCode} {order.shipping_address?.city} (
                               {order.shipping_address?.countryCode || 'IT'})
                             </div>
                           </div>
 
-                          <div className="bg-white p-3 rounded-lg border border-[#E2E8E7] space-y-1">
-                            <div className="text-[#5C6B68] text-[11px] font-semibold">
+                          <div className="bg-white p-3 rounded-lg border border-[#DCE4E2] space-y-1">
+                            <div className="text-[#566663] text-[11px] font-semibold">
                               Articoli Venduti
                             </div>
                             <div className="divide-y divide-[#EEF2F1]">
@@ -1217,11 +1259,11 @@ export const EbayManager: React.FC = () => {
                                   key={idx}
                                   className="py-1 flex items-center justify-between text-[11px] tabular-nums"
                                 >
-                                  <span className="text-[#1A2322] font-medium truncate max-w-xs">
+                                  <span className="text-[#131C1B] font-medium truncate max-w-xs">
                                     {item.title}
                                   </span>
                                   <span className="font-mono text-[#074E44] font-semibold">
-                                    {item.quantity} pz • € {item.lineItemCost}
+                                    {item.quantity} pz · € {item.lineItemCost}
                                   </span>
                                 </div>
                               ))}
@@ -1276,11 +1318,11 @@ export const EbayManager: React.FC = () => {
                             </Button>
                           </div>
                         ) : (
-                          <div className="p-2.5 bg-white rounded-lg border border-[#E2E8E7] text-xs text-[#3F4E4B] flex items-center gap-2">
+                          <div className="p-2.5 bg-white rounded-lg border border-[#DCE4E2] text-xs text-[#3F4E4B] flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-[#074E44] shrink-0" />
                             <span>
                               Spedizione completata con{' '}
-                              <strong>{order.carrier_code || 'Corriere'}</strong> • Tracking:{' '}
+                              <strong>{order.carrier_code || 'Corriere'}</strong> · Tracking:{' '}
                               <code className="text-[#074E44] font-mono font-semibold">
                                 {order.tracking_number}
                               </code>
@@ -1299,41 +1341,43 @@ export const EbayManager: React.FC = () => {
 
       {/* Modale Conferma Disconnessione eBay */}
       {showDisconnectConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8E7] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-red-700">
-                <Unplug className="w-5 h-5" />
-                <h3 className="text-base font-bold text-[#162220]">Scollega Account eBay</h3>
+        <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE4E2] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div className="px-5 py-3.5 bg-[#121B1A] text-white flex items-center justify-between border-b border-[#253331]">
+              <div className="flex items-center gap-2.5">
+                <Unplug className="w-4.5 h-4.5 text-red-400" />
+                <h3 className="text-sm font-bold">Scollega Account eBay</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowDisconnectConfirm(false)}
-                className="p-1 text-[#5C6B68] hover:text-[#1A2322] rounded-lg hover:bg-[#F3F6F5] cursor-pointer"
+                className="p-1 text-[#95A7A3] hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-[#3F4E4B] leading-relaxed">
-              Sei sicuro di voler scollegare l'account eBay Sandbox da Autopia Manager? Potrai rieffettuare il collegamento in qualsiasi momento.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EEF2F1]">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowDisconnectConfirm(false)}
-                disabled={isDisconnecting}
-              >
-                Annulla
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                loading={isDisconnecting}
-                onClick={confirmDisconnect}
-              >
-                {isDisconnecting ? 'Disconnessione...' : 'Scollega Account'}
-              </Button>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-[#3F4E4B] leading-relaxed">
+                Sei sicuro di voler scollegare l&apos;account eBay Sandbox da Autopia Manager? Potrai rieffettuare il collegamento in qualsiasi momento.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#EEF2F1]">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowDisconnectConfirm(false)}
+                  disabled={isDisconnecting}
+                >
+                  Annulla
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={isDisconnecting}
+                  onClick={confirmDisconnect}
+                >
+                  {isDisconnecting ? 'Disconnessione...' : 'Scollega Account'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1341,33 +1385,33 @@ export const EbayManager: React.FC = () => {
 
       {/* Modale Diagnostica Completa Canale eBay (Riservata Esclusivamente all'Admin) */}
       {showDiagnosticsModal && isAdmin && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E2E8E7] rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#EEF2F1] flex items-center justify-between bg-[#FAFBFB]">
+        <div className="fixed inset-0 z-50 bg-[#0F1615]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-white border border-[#DCE4E2] rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#253331] flex items-center justify-between bg-[#121B1A] text-white">
               <div className="flex items-center gap-2.5">
-                <Wrench className="w-5 h-5 text-[#074E44]" />
-                <h3 className="text-base font-bold text-[#162220]">
+                <Wrench className="w-5 h-5 text-[#5EEAD4]" />
+                <h3 className="text-base font-bold">
                   Diagnostica Canale eBay (Sandbox)
                 </h3>
               </div>
-              <Button
-                variant="secondary"
-                size="xs"
+              <button
+                type="button"
                 onClick={() => setShowDiagnosticsModal(false)}
+                className="p-1.5 text-[#95A7A3] hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
               >
-                Chiudi
-              </Button>
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
               {isDiagnosing ? (
                 <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-[#074E44]" />
-                  <p className="text-sm font-semibold text-[#162220]">
+                  <p className="text-sm font-semibold text-[#131C1B]">
                     Verifica architettura eBay in corso...
                   </p>
-                  <p className="text-xs text-[#5C6B68] max-w-xs">
-                    Interrogazione del database Supabase, verifica sessione e test dell'endpoint backend.
+                  <p className="text-xs text-[#566663] max-w-xs">
+                    Interrogazione del database Supabase, verifica sessione e test dell&apos;endpoint backend.
                   </p>
                 </div>
               ) : diagnosticsReport ? (
@@ -1393,7 +1437,7 @@ export const EbayManager: React.FC = () => {
                     {diagnosticsReport.checks.map((check) => (
                       <div
                         key={check.id}
-                        className="p-3.5 bg-[#FAFBFB] border border-[#E2E8E7] rounded-xl space-y-2"
+                        className="p-3.5 bg-[#F6F8F8] border border-[#E1E8E6] rounded-xl space-y-2"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -1406,7 +1450,7 @@ export const EbayManager: React.FC = () => {
                             {check.status === 'error' && (
                               <XCircle className="w-4 h-4 text-red-600 shrink-0" />
                             )}
-                            <span className="font-semibold text-[#1A2322] text-xs">
+                            <span className="font-semibold text-[#131C1B] text-xs">
                               {check.name}
                             </span>
                           </div>
@@ -1427,12 +1471,12 @@ export const EbayManager: React.FC = () => {
                         <p className="text-[#3F4E4B] text-xs pl-6">{check.message}</p>
 
                         {check.suggestion && (
-                          <div className="ml-6 p-2.5 bg-white border border-[#E2E8E7] rounded-lg text-[11px] text-[#074E44] flex items-start justify-between gap-2">
+                          <div className="ml-6 p-2.5 bg-white border border-[#DCE4E2] rounded-lg text-[11px] text-[#074E44] flex items-start justify-between gap-2">
                             <span className="font-mono break-all">{check.suggestion}</span>
                             <button
                               type="button"
                               onClick={() => copyToClipboard(check.suggestion!, check.id)}
-                              className="text-[#5C6B68] hover:text-[#074E44] shrink-0 cursor-pointer p-1"
+                              className="text-[#566663] hover:text-[#074E44] shrink-0 cursor-pointer p-1"
                               title="Copia suggerimento"
                             >
                               {copiedItem === check.id ? (
@@ -1448,16 +1492,16 @@ export const EbayManager: React.FC = () => {
                   </div>
 
                   <div className="pt-3 border-t border-[#EEF2F1] space-y-2">
-                    <div className="text-[11px] font-bold text-[#5C6B68] uppercase tracking-wider">
+                    <div className="text-[11px] font-bold text-[#566663] uppercase tracking-wider">
                       Guida Rapida Configurazione
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div className="p-3 bg-[#FAFBFB] border border-[#E2E8E7] rounded-xl space-y-2">
-                        <div className="font-semibold text-[#1A2322] flex items-center gap-1.5">
+                      <div className="p-3 bg-[#F6F8F8] border border-[#E1E8E6] rounded-xl space-y-2">
+                        <div className="font-semibold text-[#131C1B] flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-[#074E44]" />
                           <span>1. Schema SQL Supabase</span>
                         </div>
-                        <p className="text-[11px] text-[#5C6B68]">
+                        <p className="text-[11px] text-[#566663]">
                           Crea le tabelle isolate{' '}
                           <code className="text-[#074E44]">ebay_oauth_states</code> e{' '}
                           <code className="text-[#074E44]">seller_ebay_tokens</code>.
@@ -1515,12 +1559,12 @@ ALTER TABLE public.seller_ebay_tokens ENABLE ROW LEVEL SECURITY;`;
                         </Button>
                       </div>
 
-                      <div className="p-3 bg-[#FAFBFB] border border-[#E2E8E7] rounded-xl space-y-2">
-                        <div className="font-semibold text-[#1A2322] flex items-center gap-1.5">
+                      <div className="p-3 bg-[#F6F8F8] border border-[#E1E8E6] rounded-xl space-y-2">
+                        <div className="font-semibold text-[#131C1B] flex items-center gap-1.5">
                           <Globe className="w-3.5 h-3.5 text-[#074E44]" />
                           <span>2. Variabili Netlify</span>
                         </div>
-                        <p className="text-[11px] text-[#5C6B68]">
+                        <p className="text-[11px] text-[#566663]">
                           Configura le variabili in <em>Site configuration → Environment variables</em>.
                         </p>
                         <Button

@@ -97,24 +97,22 @@ export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#10201E]/45 backdrop-blur-[2px] select-none font-sans">
-      <div className="w-full max-w-2xl bg-white border border-[#E2E8E7] rounded-2xl shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0F1615]/60 backdrop-blur-[2px] select-none font-sans">
+      <div className="w-full max-w-2xl bg-white border border-[#DCE4E2] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         {/* Intestazione */}
-        <div className="px-6 py-4 bg-[#FAFBFB] border-b border-[#E2E8E7] flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-[#121B1A] text-white border-b border-[#253331] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] text-[#074E44] flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-[#0A6256]/40 border border-[#198575]/40 text-[#5EEAD4] flex items-center justify-center">
               <Car className="w-5 h-5" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-bold text-[#1A2322]">
+                <h2 className="text-base font-bold text-white">
                   {vehicle.make} {vehicle.model}
                 </h2>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${statusObj.color}`}>
-                  {statusObj.label}
-                </span>
+                <StatusBadge tone="brand">{statusObj.label}</StatusBadge>
               </div>
-              <p className="text-xs text-[#5C6B68] mt-0.5">
+              <p className="text-xs text-[#9AB0AC] mt-0.5">
                 {vehicle.version || 'Versione standard'} {vehicle.year ? `· Immatricolazione ${vehicle.year}` : ''}
               </p>
             </div>
@@ -123,7 +121,7 @@ export const VehicleDetailsModal: React.FC<VehicleDetailsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="text-[#5C6B68] hover:text-[#1A2322] hover:bg-[#EDF2F1] p-1.5 rounded-lg transition-colors cursor-pointer"
+            className="text-[#9AB0AC] hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
